@@ -6,6 +6,7 @@
     "test": "node physics.test.mjs"
   },
   "dependencies": {
-    "cannon-es": "^0.20.0"
+    "cannon-es": "^0.20.0",
+    "three": "^0.160.0"
   }
 }

@@ -155,6 +155,8 @@
     <label><input type="checkbox" id="chkSpin" checked> 笼子慢转</label>
     <label><input type="checkbox" id="chkSound" checked> 音效</label>
     <label><input type="checkbox" id="chkDebug"> 碰撞框</label>
+    <label><input type="checkbox" id="chkBirds" checked> 鸟叫</label>
+    <label><input type="checkbox" id="chkDay" checked> 日月变迁</label>
   </div>
   <div class="tip">拖拽旋转 · 滚轮缩放 · 点击笼子晃动</div>
 </div>
@@ -162,18 +164,18 @@
 <div id="overlay"><div class="spin"></div><div id="ovText">正在生长一棵树…</div></div>
 
 <script>
-  window.addEventListener('error', () => {
+  window.addEventListener('error', e => {
     const ov = document.getElementById('overlay'); if (!ov || ov.classList.contains('done')) return;
-    ov.innerHTML = '<div class="err">资源加载失败 —— 本页面需要联网从 CDN（jsdelivr）加载 Three.js / cannon-es。<br>请检查网络后刷新。</div>';
+    ov.innerHTML = '<div class="err">资源加载失败：' + String(e.message || e.type).slice(0, 200) + '</div>';
   }, true);
 </script>
 
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-    "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/jsm/",
+    "cannon-es": "./vendor/cannon-es.js"
   }
 }
 </script>
@@ -231,7 +233,11 @@ sun.shadow.camera.near = 1;  sun.shadow.camera.far = 30;
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.02;
 scene.add(sun);
-scene.add(new THREE.HemisphereLight(0xcfe5ff, 0x51703f, 0.75));
+const hemi = new THREE.HemisphereLight(0xcfe5ff, 0x51703f, 0.75);
+scene.add(hemi);
+const moonLight = new THREE.DirectionalLight(0x8fa8ff, 0);
+moonLight.position.set(-12, 16, -8);
+scene.add(moonLight);
 
 /* ================================================================
    程序化贴图
@@ -361,19 +367,72 @@ const birdTex = canvasTexture(480, 768, (x) => {
 /* ================================================================
    天空 / 地面 / 树 / 环境散布
 ================================================================ */
+const skyUni = {
+  top: { value: new THREE.Color(0x86b6e0) },
+  bot: { value: new THREE.Color(0xe3efe0) },
+};
 scene.add(new THREE.Mesh(
   new THREE.SphereGeometry(60, 32, 16),
   new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: {
-      top: { value: new THREE.Color(0x86b6e0) },
-      bot: { value: new THREE.Color(0xe3efe0) },
-    },
+    uniforms: skyUni,
     vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
     fragmentShader: `uniform vec3 top; uniform vec3 bot; varying vec3 vP;
       void main(){ float h = smoothstep(-0.05, 0.45, vP.y); gl_FragColor = vec4(mix(bot, top, h), 1.0); }`,
   })
 ));
+
+/* 日月盘与星空 */
+const sunDisk = new THREE.Mesh(new THREE.SphereGeometry(2.3, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0xfff2b8, fog: false }));
+scene.add(sunDisk);
+const moonDisk = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0xdfe6f5, fog: false }));
+scene.add(moonDisk);
+const starGeo = new THREE.BufferGeometry();
+{
+  const N = 420, arr = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const v = new THREE.Vector3().randomDirection().multiplyScalar(52);
+    if (v.y < 2) v.y = 2 + Math.random() * 22;
+    arr[i * 3] = v.x; arr[i * 3 + 1] = v.y; arr[i * 3 + 2] = v.z;
+  }
+  starGeo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+}
+const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
+  color: 0xcfe0ff, size: 0.15, transparent: true, opacity: 0,
+  blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+}));
+scene.add(stars);
+
+/* 日月变迁：t 0..1（0.25 正午 / 0.75 午夜），驱动天空、雾、光照、星月 */
+const dayNight = { on: true, t: 0.2, speed: 1 / 90 };
+const _skyCol = {
+  topD: new THREE.Color(0x86b6e0), botD: new THREE.Color(0xe3efe0),
+  topN: new THREE.Color(0x0b1026), botN: new THREE.Color(0x141b30),
+  dusk: new THREE.Color(0xff9a5c), sunD: new THREE.Color(0xfff1da), sunS: new THREE.Color(0xff8a4a),
+};
+function updateDayNight(dt) {
+  if (dayNight.on) dayNight.t = (dayNight.t + dt * dayNight.speed) % 1;
+  const a = dayNight.t * Math.PI * 2;
+  const sx = Math.cos(a), sy = Math.sin(a);
+  const day = THREE.MathUtils.smoothstep(sy, -0.12, 0.3);
+  const dusk = Math.max(0, 1 - Math.abs(sy) * 3.2);
+  sun.position.set(sx * 24, sy * 20, 10);
+  moonLight.position.set(-sx * 20, Math.max(6, -sy * 20), -8);
+  moonLight.intensity = 0.5 * (1 - day);
+  skyUni.top.value.copy(_skyCol.topN).lerp(_skyCol.topD, day).lerp(_skyCol.dusk, dusk * 0.5);
+  skyUni.bot.value.copy(_skyCol.botN).lerp(_skyCol.botD, day).lerp(_skyCol.dusk, dusk * 0.38);
+  scene.fog.color.copy(skyUni.bot.value);
+  sunDisk.position.set(sx * 50, sy * 50, 16);
+  moonDisk.position.set(-sx * 50, -sy * 50, -12);
+  sun.intensity = 0.06 + 2.4 * day;
+  sun.color.copy(_skyCol.sunD).lerp(_skyCol.sunS, dusk);
+  hemi.intensity = 0.22 + 0.55 * day;
+  stars.material.opacity = (1 - day) * 0.9;
+}
+window.__setTime = v => { dayNight.t = v; updateDayNight(0); };   // 调试钩子
+updateDayNight(0);
 
 const ground = new THREE.Mesh(
   new THREE.CircleGeometry(45, 64),
@@ -428,6 +487,28 @@ function distantTree(px, pz, s) {
 }
 for (const [px, pz, s] of [[10, -8, 1.6], [-9, -12, 2], [14, 4, 1.8], [-14, 8, 1.7], [8, 12, 1.5], [-6, -18, 2.4], [18, -4, 2], [-16, -4, 1.4]]) distantTree(px, pz, s);
 
+/* 云朵：扁平化二十面体拼的积云，缓慢东漂 */
+const cloudGroup = new THREE.Group();
+{
+  const cloudMat = new THREE.MeshStandardMaterial({
+    color: 0xf4f7fb, roughness: 1, flatShading: true, transparent: true, opacity: 0.92, envMapIntensity: 0.35,
+  });
+  for (let i = 0; i < 10; i++) {
+    const c = new THREE.Group();
+    const n = 3 + (Math.random() * 3 | 0);
+    for (let j = 0; j < n; j++) {
+      const m = new THREE.Mesh(new THREE.IcosahedronGeometry(rand(0.9, 1.7), 0), cloudMat);
+      m.position.set((j - (n - 1) / 2) * rand(1.1, 1.5), rand(-0.25, 0.35), rand(-0.6, 0.6));
+      m.scale.y = 0.55;
+      c.add(m);
+    }
+    c.position.set(rand(-30, 30), rand(11, 17), rand(-26, 26));
+    c.userData.v = rand(0.18, 0.45);
+    cloudGroup.add(c);
+  }
+}
+scene.add(cloudGroup);
+
 const bushGeo = new THREE.IcosahedronGeometry(1, 1);
 for (const [px, pz, r] of [[3.5, -2.5, 0.8], [-3, 3, 0.7], [5, 3, 0.9], [-5, -3.5, 0.6], [2.5, 4.5, 0.55], [-6, 1.5, 0.75]]) {
   const m = new THREE.Mesh(bushGeo, leafMats[(Math.random() * 3) | 0]);
@@ -444,6 +525,175 @@ for (const [px, pz, r] of [[1.8, -1.2, 0.26], [-2.4, -2, 0.34], [3, 1.8, 0.2], [
   m.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
   m.castShadow = true;
   scene.add(m);
+}
+
+/* ================================================================
+   帐篷（A 形帆布）与篝火（柴堆 + 火焰粒子 + 烟 + 火光）
+================================================================ */
+const TENT = new THREE.Vector3(-2.3, 0, 1.9);      // 帐篷位置
+const FIRE = new THREE.Vector3(-0.7, 0, 2.7);      // 篝火位置
+{
+  /* —— 帐篷：两片帆布 + 背面三角封口 + 地钉绳 —— */
+  const canvasMat = new THREE.MeshStandardMaterial({
+    color: 0xb0793f, roughness: 0.95, side: THREE.DoubleSide, envMapIntensity: 0.25,
+  });
+  const tent = new THREE.Group();
+  const W = 1.15, H = 1.25, D = 1.9;               // 半宽 / 帐高 / 深
+  const OV = 0.14;                                  // 底边外飘
+  /* 两个斜面：底角外撑的梯形面，屋脊严丝合缝 */
+  for (const side of [-1, 1]) {
+    const g = new THREE.BufferGeometry();
+    const bx = side * (W + OV);
+    g.setAttribute('position', new THREE.Float32BufferAttribute([
+      bx, 0, D / 2 + OV,
+      0, H, D / 2,
+      0, H, -D / 2,
+      bx, 0, -D / 2 - OV,
+    ], 3));
+    g.setIndex([0, 1, 2, 0, 2, 3]);
+    g.computeVertexNormals();
+    tent.add(new THREE.Mesh(g, canvasMat));
+  }
+  const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, D + 0.2, 8), barkMat);
+  ridge.rotation.x = Math.PI / 2;
+  ridge.position.set(0, H, 0);
+  tent.add(ridge);
+  const gableGeo = new THREE.BufferGeometry();
+  gableGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+    -W, 0, -D / 2, 0, H, -D / 2, W, 0, -D / 2,
+  ], 3));
+  gableGeo.computeVertexNormals();
+  tent.add(new THREE.Mesh(gableGeo,
+    new THREE.MeshStandardMaterial({ color: 0x7a4e28, roughness: 1, side: THREE.DoubleSide })));
+  const pinMat = new THREE.MeshStandardMaterial({ color: 0x3a3d40, roughness: 0.6, metalness: 0.7 });
+  for (const [px, pz] of [[-W - 0.15, D / 2 + 0.15], [W + 0.15, D / 2 + 0.15], [-W - 0.15, -D / 2 - 0.1], [W + 0.15, -D / 2 - 0.1]]) {
+    const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.16, 6), pinMat);
+    pin.position.set(px, 0.07, pz);
+    pin.rotation.z = px > 0 ? 0.4 : -0.4;
+    tent.add(pin);
+  }
+  tent.position.copy(TENT);
+  tent.rotation.y = 0.5;                            // 门口朝向篝火与笼子
+  tent.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  scene.add(tent);
+
+  /* —— 篝火：石圈 + 柴堆 —— */
+  const fireGroup = new THREE.Group();
+  fireGroup.position.copy(FIRE);
+  for (let i = 0; i < 9; i++) {
+    const a = i * Math.PI * 2 / 9;
+    const st = new THREE.Mesh(new THREE.DodecahedronGeometry(rand(0.09, 0.13), 0), stoneMat);
+    st.position.set(Math.cos(a) * 0.42, 0.05, Math.sin(a) * 0.42);
+    st.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+    st.castShadow = true;
+    fireGroup.add(st);
+  }
+  const logMat = new THREE.MeshStandardMaterial({ color: 0x4a3320, roughness: 1, envMapIntensity: 0.2 });
+  for (let i = 0; i < 5; i++) {
+    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.72, 7), logMat);
+    const a = i * Math.PI * 2 / 5 + 0.3;
+    log.position.set(Math.cos(a) * 0.12, 0.1 + i * 0.045, Math.sin(a) * 0.12);
+    log.rotation.set(Math.cos(a) * 1.15, -a, Math.sin(a) * 1.15);
+    log.castShadow = true;
+    fireGroup.add(log);
+  }
+  const charMat = new THREE.MeshStandardMaterial({ color: 0x1c1210, roughness: 1, emissive: 0xff5a1e, emissiveIntensity: 0.55 });
+  const embers = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.05, 12), charMat);
+  embers.position.y = 0.08;
+  fireGroup.add(embers);
+  scene.add(fireGroup);
+
+  /* —— 火焰粒子（加色混合的上升火舌）—— */
+  const N = 90;
+  const fGeo = new THREE.BufferGeometry();
+  const fPos = new Float32Array(N * 3);
+  const fSeed = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    fSeed[i] = Math.random();
+    fPos[i * 3 + 1] = Math.random() * 0.9;
+  }
+  fGeo.setAttribute('position', new THREE.BufferAttribute(fPos, 3));
+  const dotTex = (() => {                           // 径向渐变圆点：火与烟共用
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g2 = c.getContext('2d');
+    const gr = g2.createRadialGradient(32, 32, 2, 32, 32, 31);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.5, 'rgba(255,255,255,0.5)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g2.fillStyle = gr; g2.fillRect(0, 0, 64, 64);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const flame = new THREE.Points(fGeo, new THREE.PointsMaterial({
+    color: 0xff7a1e, size: 0.17, map: dotTex, transparent: true, opacity: 0.85,
+    blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+  }));
+  flame.position.copy(FIRE);
+  scene.add(flame);
+  const flameCore = new THREE.Mesh(
+    new THREE.ConeGeometry(0.16, 0.5, 10),
+    new THREE.MeshBasicMaterial({ color: 0xffc23e, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  flameCore.position.copy(FIRE).y += 0.28;
+  scene.add(flameCore);
+
+  /* —— 烟（灰色粒子，缓慢上升扩散）—— */
+  const SN = 40;
+  const sGeo = new THREE.BufferGeometry();
+  const sPos = new Float32Array(SN * 3);
+  const sSeed = new Float32Array(SN);
+  for (let i = 0; i < SN; i++) {
+    sSeed[i] = Math.random();
+    sPos[i * 3 + 1] = 0.5 + Math.random() * 1.6;
+  }
+  sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+  const smoke = new THREE.Points(sGeo, new THREE.PointsMaterial({
+    color: 0x9a9a9a, size: 0.34, map: dotTex, transparent: true, opacity: 0.16, depthWrite: false,
+  }));
+  smoke.position.copy(FIRE);
+  scene.add(smoke);
+
+  /* —— 火光：闪烁点光 + 地面光斑用长阴影补 —— */
+  const fireLight = new THREE.PointLight(0xff8c3a, 3.2, 7.5, 1.6);
+  fireLight.position.copy(FIRE).y += 0.55;
+  fireLight.castShadow = true;
+  fireLight.shadow.mapSize.set(512, 512);
+  fireLight.shadow.bias = -0.004;
+  scene.add(fireLight);
+  const glow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.9, 24),
+    new THREE.MeshBasicMaterial({ color: 0xff7a1e, transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  glow.rotation.x = -Math.PI / 2;
+  glow.position.copy(FIRE).y += 0.02;
+  scene.add(glow);
+
+  /* 动画：粒子循环上升 + 光强闪烁 + 火苗摇曳 */
+  window.__fireTick = (t, dt) => {
+    const pa = flame.geometry.attributes.position;
+    for (let i = 0; i < N; i++) {
+      let y = pa.getY(i) + dt * (0.6 + fSeed[i] * 0.7);
+      if (y > 0.95) { y = 0; pa.setXYZ(i, rand(-0.16, 0.16), 0, rand(-0.16, 0.16)); }
+      else pa.setY(i, y);
+    }
+    pa.needsUpdate = true;
+    const sa = smoke.geometry.attributes.position;
+    for (let i = 0; i < SN; i++) {
+      let y = sa.getY(i) + dt * (0.32 + sSeed[i] * 0.2);
+      const sway = Math.sin(t * 0.8 + i * 1.7) * 0.03;
+      if (y > 2.1) { y = 0.5; sa.setXYZ(i, rand(-0.08, 0.08), 0.5, rand(-0.08, 0.08)); }
+      else { sa.setY(i, y); sa.setX(i, sa.getX(i) + sway * dt * 10); }
+    }
+    sa.needsUpdate = true;
+    const fl = 2.6 + Math.sin(t * 11) * 0.5 + Math.sin(t * 23.7) * 0.35 + Math.random() * 0.3;
+    fireLight.intensity = fl;
+    flameCore.scale.set(1 + Math.sin(t * 13) * 0.08, 1 + Math.sin(t * 9.3) * 0.15, 1 + Math.cos(t * 17) * 0.08);
+    flameCore.rotation.y = t * 0.6;
+    flameCore.rotation.z = Math.sin(t * 2.1) * 0.12;
+    flame.material.opacity = 0.7 + Math.sin(t * 19) * 0.12;
+    embers.material.emissiveIntensity = 0.4 + Math.sin(t * 7.7) * 0.2 + Math.random() * 0.1;
+    glow.material.opacity = 0.11 + Math.sin(t * 5.3) * 0.03;
+  };
 }
 
 /* ================================================================
@@ -716,6 +966,7 @@ syncVisuals();
    音效：WebAudio 合成金属撞击（非谐分音 + 带通噪声瞬态）
 ================================================================ */
 let soundOn = true, audioCtx = null, masterGain = null, ambienceOn = false, _lastClink = 0;
+let birdsOn = true;
 function ensureAudio() {
   if (!audioCtx) {
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -759,7 +1010,7 @@ function scheduleChirp() {
   setTimeout(() => { chirpPhrase(); scheduleChirp(); }, 2200 + Math.random() * 4500);
 }
 function chirpPhrase() {                     // 一串 2~4 声的鸟鸣（扫频正弦+颤音）
-  if (!soundOn || !audioCtx || audioCtx.state !== 'running') return;
+  if (!birdsOn || !soundOn || !audioCtx || audioCtx.state !== 'running') return;
   const n = 2 + (Math.random() * 3 | 0);
   const base = 2500 + Math.random() * 1500;
   for (let i = 0; i < n; i++) {
@@ -970,6 +1221,8 @@ $('chkSound').onchange = e => {
 };
 $('chkDebug').onchange = e => debugGroup.visible = e.target.checked;
 $('uiHeader').onclick = () => $('ui').classList.toggle('collapsed');
+$('chkBirds').onchange = e => birdsOn = e.target.checked;
+$('chkDay').onchange = e => dayNight.on = e.target.checked;
 
 /* ================================================================
    主循环
@@ -978,11 +1231,22 @@ const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 1 / 30);
+  const t = clock.elapsedTime;
 
   /* 笼内物理：摆动 / 自转 / 碰撞全部真实解算（涂色时暂停自转） */
   phys.setSpin(spinning && !painting);
   phys.step(dt);
   syncVisuals();
+
+  /* 篝火特效 */
+  if (window.__fireTick) window.__fireTick(t, dt);
+
+  /* 日月变迁 + 云漂移 */
+  updateDayNight(dt);
+  for (const c of cloudGroup.children) {
+    c.position.x += c.userData.v * dt;
+    if (c.position.x > 34) c.position.x = -34;
+  }
 
   /* 弹入动画 */
   if (popStart >= 0) {
