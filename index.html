@@ -534,7 +534,7 @@ cageGroup.add(latch);
 ================================================================ */
 const wrenchGroup = new THREE.Group();
 wrenchGroup.scale.setScalar(0.16);
-cageGroup.add(wrenchGroup);
+scene.add(wrenchGroup);      // 世界系刚体：直接挂 scene，避免被笼体变换二次叠加
 
 const paintSteel = new THREE.MeshStandardMaterial({
   color: 0xffffff, vertexColors: true, metalness: 0.65, roughness: 0.36, envMapIntensity: 0.9,
@@ -623,7 +623,7 @@ applyGradient();
    幺鸡麻将牌
 ================================================================ */
 const tileGroup = new THREE.Group();
-cageGroup.add(tileGroup);
+scene.add(tileGroup);        // 同上：世界系位姿由 syncVisuals 直接驱动
 {
   const ivory = new THREE.MeshPhysicalMaterial({
     color: 0xf2ede0, roughness: 0.42, metalness: 0, clearcoat: 0.55, clearcoatRoughness: 0.3, envMapIntensity: 0.6,
