@@ -510,7 +510,7 @@ const cloudGroup = new THREE.Group();
 scene.add(cloudGroup);
 
 const bushGeo = new THREE.IcosahedronGeometry(1, 1);
-for (const [px, pz, r] of [[3.5, -2.5, 0.8], [-3, 3, 0.7], [5, 3, 0.9], [-5, -3.5, 0.6], [2.5, 4.5, 0.55], [-6, 1.5, 0.75]]) {
+for (const [px, pz, r] of [[3.5, -2.5, 0.8], [-6.5, 4.6, 0.7], [5, 3, 0.9], [-5, -3.5, 0.6], [4.2, 6.2, 0.55], [-7.5, 0.5, 0.75]]) {
   const m = new THREE.Mesh(bushGeo, leafMats[(Math.random() * 3) | 0]);
   m.position.set(px, r * 0.45, pz);
   m.scale.set(r, r * 0.6, r);
@@ -530,8 +530,8 @@ for (const [px, pz, r] of [[1.8, -1.2, 0.26], [-2.4, -2, 0.34], [3, 1.8, 0.2], [
 /* ================================================================
    帐篷（A 形帆布）与篝火（柴堆 + 火焰粒子 + 烟 + 火光）
 ================================================================ */
-const TENT = new THREE.Vector3(-2.3, 0, 1.9);      // 帐篷位置
-const FIRE = new THREE.Vector3(-0.7, 0, 2.7);      // 篝火位置
+const TENT = new THREE.Vector3(-2.7, 0, 3.1);      // 帐篷位置（开阔草地）
+const FIRE = new THREE.Vector3(-0.7, 0, 3.7);      // 篝火位置
 {
   /* —— 帐篷：两片帆布 + 背面三角封口 + 地钉绳 —— */
   const canvasMat = new THREE.MeshStandardMaterial({
@@ -560,7 +560,7 @@ const FIRE = new THREE.Vector3(-0.7, 0, 2.7);      // 篝火位置
   tent.add(ridge);
   const gableGeo = new THREE.BufferGeometry();
   gableGeo.setAttribute('position', new THREE.Float32BufferAttribute([
-    -W, 0, -D / 2, 0, H, -D / 2, W, 0, -D / 2,
+    -(W + OV), 0, -D / 2 - OV, 0, H, -D / 2, W + OV, 0, -D / 2 - OV,
   ], 3));
   gableGeo.computeVertexNormals();
   tent.add(new THREE.Mesh(gableGeo,
@@ -573,7 +573,7 @@ const FIRE = new THREE.Vector3(-0.7, 0, 2.7);      // 篝火位置
     tent.add(pin);
   }
   tent.position.copy(TENT);
-  tent.rotation.y = 0.5;                            // 门口朝向篝火与笼子
+  tent.rotation.y = Math.atan2(FIRE.x - TENT.x, FIRE.z - TENT.z);   // 帐门正对篝火
   tent.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   scene.add(tent);
 
