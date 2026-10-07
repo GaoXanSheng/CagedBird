@@ -72,7 +72,7 @@ for (let i = 0; i < 720; i++) {
   if (i % 60 === 59) {
     for (const [name, b] of [['扳手', wrenchBody], ['幺鸡', tileBody]]) {
       const l = localOfBody(b);
-      assert.ok(radial(l) < 1.6 && l.y > -0.3 && l.y < 2.8, `${name} 逃出笼子 @${i}`);
+      assert.ok(radial(l) < 1.25 && l.y > -0.3 && l.y < 2.8, `${name} 越过栏杆平面 @${i} r=${radial(l).toFixed(2)}`);
     }
   }
 }
@@ -92,4 +92,17 @@ for (let i = 0; i < 120; i++) phys.step(DT);
 const tl = localOfBody(tileBody);
 assert.ok(radial(tl) < 1.1 && tl.y > 0.05 && tl.y < 1.2, `幺鸡重置后不在笼底 r=${radial(tl).toFixed(2)} y=${tl.y.toFixed(2)}`);
 console.log('阶段3 通过：切换物品后扳手重新卡栏、幺鸡落回笼底');
+
+/* 阶段 4：30s 高强度折腾（每 0.5s 点击 + 全程自转）——封闭壳不许有任何泄漏 */
+phys.setSpin(true);
+for (let i = 0; i < 1800; i++) {
+  if (i % 30 === 0) phys.shake(i % 60 === 0 ? 'wrench' : 'tile');
+  phys.step(DT);
+  assert.ok(finite(wrenchBody) && finite(tileBody) && finite(cageBody), `NaN/Inf @ soak ${i}`);
+  for (const [name, b] of [['扳手', wrenchBody], ['幺鸡', tileBody]]) {
+    const l = localOfBody(b);
+    assert.ok(radial(l) < 1.15 && l.y > -0.3 && l.y < 2.8, `${name} 越狱 @${i} r=${radial(l).toFixed(2)} y=${l.y.toFixed(2)}`);
+  }
+}
+console.log('阶段4 通过：30s 高强度折腾，物品始终在笼内');
 console.log('physics regression: all pass');

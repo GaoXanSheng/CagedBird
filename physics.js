@@ -1,6 +1,8 @@
 /* 笼中物理（cannon-es）：页面与 Node 回归测试共用同一套搭建代码。
    笼子是动力学 compound，经点约束悬挂在树枝锚点 —— 摆动来自真实重力，
-   自转由角速度目标平滑驱动，物品与栏杆的碰撞（含卡位）全部交给解算器。 */
+   自转由角速度目标平滑驱动。
+   封闭性由碰撞体几何保证：地板 + 连续内壁圆筒 + 穹顶锥壳拼成全封闭壳体，
+   物品在物理上无法离开笼子（不依赖任何手写位置钳制）。 */
 import * as CANNON from 'cannon-es';
 
 export const CAGE = {
@@ -9,6 +11,7 @@ export const CAGE = {
   barR: 0.965,
   barH: 1.9,
   baseY: 0.1,             // 笼底板顶面
+  wallR: 1.05,            // 不可见连续内壁半径（栏杆外侧一点，堵住间隙）
 };
 
 export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } = {}) {
@@ -23,7 +26,7 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
   world.addContactMaterial(new CANNON.ContactMaterial(matItem, matCage, { friction: 0.55, restitution: 0.38 }));
   world.addContactMaterial(new CANNON.ContactMaterial(matItem, matItem, { friction: 0.4, restitution: 0.3 }));
 
-  /* 笼子：动力学 compound（底盘 / 栏杆 / 穹顶锥壳 / 顶盖），质心即体原点（笼底中心） */
+  /* 笼子：动力学 compound（底盘 / 栏杆 / 内壁 / 穹顶锥壳 / 顶盖），质心即体原点 */
   const cageBody = new CANNON.Body({
     mass: 6, material: matCage,
     linearDamping: 0.05, angularDamping: 0.3, allowSleep: false,
@@ -37,6 +40,19 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
       new CANNON.Vec3(Math.cos(a) * CAGE.barR, CAGE.baseY + CAGE.barH / 2, Math.sin(a) * CAGE.barR)
     );
   }
+  /* 连续内壁：24 段 × 3 层拼成无缝圆筒（视觉栏杆间隙保留，物理上无洞） */
+  for (let band = 0; band < 3; band++) {
+    const wy = 0.55 + band * 0.55;
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      const q = new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -Math.PI / 2 - a);
+      cageBody.addShape(
+        new CANNON.Box(new CANNON.Vec3(0.35, 0.45, 0.03)),
+        new CANNON.Vec3(Math.cos(a) * CAGE.wallR, wy, Math.sin(a) * CAGE.wallR),
+        q
+      );
+    }
+  }
   const slope = Math.atan2(0.82, 1.0);
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
@@ -49,7 +65,7 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
     );
   }
   cageBody.addShape(new CANNON.Box(new CANNON.Vec3(0.15, 0.08, 0.15)), new CANNON.Vec3(0, 2.98, 0));
-  /* 三道横向箍环（与视觉一致）：竖直栏杆挡不住下滑，头部由箍环接住（与真实鸟笼一致） */
+  /* 三道横向箍环（与视觉一致）：竖直方向也给物品真实的支撑 */
   for (const [ry, rr] of [[0.1, 1.02], [1.0, 0.985], [2.0, 0.965]]) {
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2;
@@ -88,7 +104,8 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
   tileBody.addShape(new CANNON.Box(new CANNON.Vec3(0.31, 0.46, 0.21)));
   world.addBody(tileBody);
 
-  /* 初始位姿（笼局部）：扳手头部卡进 56.25° 栏杆间隙（正对默认相机） */
+  /* 初始位姿（笼局部）：扳手头部抵住 56.25° 栏杆间隙（正对默认相机），
+     内壁半径 1.05 − 头部径向半宽 0.24 → 头部中心最远 0.79，恰好在栏杆平面卡住 */
   function wedgeSpawn() {
     const phi = 56.25 * Math.PI / 180;
     const dir = new CANNON.Vec3(Math.cos(phi) * 0.55, 0.83, Math.sin(phi) * 0.55);
@@ -96,7 +113,7 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
     const q = new CANNON.Quaternion().setFromVectors(new CANNON.Vec3(1, 0, 0), dir);
     q.mult(new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(1, 0, 0), 50 * Math.PI / 180), q);
     const off = q.vmult(new CANNON.Vec3(0.696, 0.088, 0));
-    const headC = new CANNON.Vec3(Math.cos(phi) * 1.02, 1.35, Math.sin(phi) * 1.02);
+    const headC = new CANNON.Vec3(Math.cos(phi) * 0.79, 1.35, Math.sin(phi) * 0.79);
     return { p: headC.vsub(off), q };
   }
   const SPAWN = {
@@ -109,7 +126,7 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
     cageBody.pointToWorldFrame(spawn.p, _tmpV);
     body.position.copy(_tmpV);
     cageBody.quaternion.mult(spawn.q, body.quaternion);
-    cageBody.getVelocityAtWorldPoint(body.position, body.velocity);   // 跟随笼体运动，避免瞬移后被栏杆拍飞
+    cageBody.getVelocityAtWorldPoint(body.position, body.velocity);   // 跟随笼体运动
     body.angularVelocity.copy(cageBody.angularVelocity);
     body.wakeUp();
   }
