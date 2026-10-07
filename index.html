@@ -148,6 +148,7 @@
     <label><input type="checkbox" id="chkAuto"> 自动环绕</label>
     <label><input type="checkbox" id="chkSpin" checked> 笼子慢转</label>
     <label><input type="checkbox" id="chkSound" checked> 音效</label>
+    <label><input type="checkbox" id="chkDebug"> 碰撞框</label>
   </div>
   <div class="tip">拖拽旋转 · 滚轮缩放 · 点击笼子晃动</div>
 </div>
@@ -177,6 +178,7 @@ import { createPhysics, CAGE } from './physics.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const $ = id => document.getElementById(id);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -387,8 +389,8 @@ function tubeAlong(pts, radius, mat, seg = 40) {
   m.castShadow = true;
   return m;
 }
-scene.add(tubeAlong([[-4.15, 4.6, 0], [-3.0, 4.72, 0.1], [-1.6, 4.68, -0.05], [0.4, 4.65, 0]], 0.14, barkMat));
-scene.add(tubeAlong([[-2.6, 4.74, 0.05], [-2.2, 5.3, 0.35], [-1.9, 5.6, 0.5]], 0.07, barkMat, 16));
+scene.add(tubeAlong([[-4.15, 4.38, 0], [-3.0, 4.5, 0.1], [-1.6, 4.46, -0.05], [0.4, 4.43, 0]], 0.14, barkMat));
+scene.add(tubeAlong([[-2.6, 4.52, 0.05], [-2.2, 5.08, 0.35], [-1.9, 5.38, 0.5]], 0.07, barkMat, 16));
 
 const leafMatA = new THREE.MeshStandardMaterial({ color: 0x3e7d33, roughness: 0.9, flatShading: true, envMapIntensity: 0.25 });
 const leafMatB = new THREE.MeshStandardMaterial({ color: 0x478c3a, roughness: 0.9, flatShading: true, envMapIntensity: 0.25 });
@@ -446,7 +448,7 @@ const cageMat = new THREE.MeshStandardMaterial({ color: 0x17181a, metalness: 0.8
 const baseMat = new THREE.MeshStandardMaterial({ color: 0x101114, metalness: 0.3, roughness: 0.9, envMapIntensity: 0.3 });
 
 const hangPivot = new THREE.Group();          // 悬挂点（树枝上，静止）
-hangPivot.position.set(0.4, 4.65, 0);         // 抬高 0.3：大摆角时笼底不蹭草地
+hangPivot.position.set(0.4, 4.43, 0);         // 笼底离地 0.45：贴近草地，影子不脱节
 scene.add(hangPivot);
 
 function torus(r, tube, mat) { return new THREE.Mesh(new THREE.TorusGeometry(r, tube, 12, 40), mat); }
@@ -639,13 +641,45 @@ cageGroup.add(tileGroup);
 
 /* ================================================================
    物理接线：笼子 = 动力学 compound，点约束挂在树枝锚点上。
-   摆动 / 自转 / 卡栏杆全部真实解算（physics.js 与回归测试共用）
+   摆动 / 自转 / 碰撞全部真实解算（physics.js 与回归测试共用）
 ================================================================ */
 const phys = createPhysics({
   origin: { x: hangPivot.position.x, y: hangPivot.position.y - CAGE.pivotLocalY, z: hangPivot.position.z },
 });
 const { cageBody, wrenchBody, tileBody, SPAWN, resetBody } = phys;
 const _yDir = new THREE.Vector3();
+
+/* 调试：碰撞模型线框（面板「碰撞框」开关）——笼子=青 扳手=橙 幺鸡=品红 */
+const debugGroup = new THREE.Group();
+debugGroup.visible = false;
+scene.add(debugGroup);
+function addDebugBody(body, color) {
+  const geos = [];
+  for (let i = 0; i < body.shapes.length; i++) {
+    const he = body.shapes[i].halfExtents;
+    if (!he) continue;                                   // 仅可视化 Box 碰撞体
+    const g = new THREE.EdgesGeometry(new THREE.BoxGeometry(he.x * 2, he.y * 2, he.z * 2));
+    g.applyMatrix4(new THREE.Matrix4().compose(
+      new THREE.Vector3(body.shapeOffsets[i].x, body.shapeOffsets[i].y, body.shapeOffsets[i].z),
+      new THREE.Quaternion(
+        body.shapeOrientations[i].x, body.shapeOrientations[i].y,
+        body.shapeOrientations[i].z, body.shapeOrientations[i].w
+      ),
+      new THREE.Vector3(1, 1, 1)
+    ));
+    geos.push(g);
+  }
+  const g = new THREE.Group();
+  g.add(new THREE.LineSegments(
+    mergeGeometries(geos),
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.55, depthTest: false })
+  ));
+  debugGroup.add(g);
+  return g;
+}
+const debugCage = addDebugBody(cageBody, 0x00e5ff);
+const debugWrench = addDebugBody(wrenchBody, 0xff9500);
+const debugTile = addDebugBody(tileBody, 0xff40ff);
 
 function syncVisuals() {
   cageGroup.position.set(
@@ -662,6 +696,12 @@ function syncVisuals() {
   _yDir.set(0, 1, 0).applyQuaternion(cageGroup.quaternion);
   chainGroup.rotation.z = -Math.asin(THREE.MathUtils.clamp(_yDir.x, -1, 1)) * 0.45;
   chainGroup.rotation.x = Math.asin(THREE.MathUtils.clamp(_yDir.z, -1, 1)) * 0.45;
+  debugCage.position.copy(cageBody.position);
+  debugCage.quaternion.copy(cageBody.quaternion);
+  debugWrench.position.copy(wrenchBody.position);
+  debugWrench.quaternion.copy(wrenchBody.quaternion);
+  debugTile.position.copy(tileBody.position);
+  debugTile.quaternion.copy(tileBody.quaternion);
 }
 syncVisuals();
 
@@ -855,6 +895,7 @@ let autoRotate = false, spinning = true;
 $('chkAuto').onchange = e => autoRotate = e.target.checked;
 $('chkSpin').onchange = e => spinning = e.target.checked;
 $('chkSound').onchange = e => soundOn = e.target.checked;
+$('chkDebug').onchange = e => debugGroup.visible = e.target.checked;
 
 /* ================================================================
    主循环
@@ -864,7 +905,7 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 1 / 30);
 
-  /* 笼内物理：摆动 / 自转 / 卡栏杆全部真实解算（涂色时暂停自转） */
+  /* 笼内物理：摆动 / 自转 / 碰撞全部真实解算（涂色时暂停自转） */
   phys.setSpin(spinning && !painting);
   phys.step(dt);
   syncVisuals();

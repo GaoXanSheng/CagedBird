@@ -6,12 +6,12 @@
 import * as CANNON from 'cannon-es';
 
 export const CAGE = {
-  pivotLocalY: 3.98,      // 悬挂枢轴高度（笼底中心局部系）= 链长 + 顶环
+  pivotLocalY: 4,      // 悬挂枢轴高度（笼底中心局部系）= 链长 + 顶环
   barCount: 16,
-  barR: 0.965,
-  barH: 1.9,
+  barR: 1,
+  barH: 2,
   baseY: 0.1,             // 笼底板顶面
-  wallR: 1.05,            // 不可见连续内壁半径（栏杆外侧一点，堵住间隙）
+  wallR: 1.1,            // 不可见连续内壁半径（栏杆外侧一点，堵住间隙）
 };
 
 export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } = {}) {
@@ -65,18 +65,6 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
     );
   }
   cageBody.addShape(new CANNON.Box(new CANNON.Vec3(0.15, 0.08, 0.15)), new CANNON.Vec3(0, 2.98, 0));
-  /* 三道横向箍环（与视觉一致）：竖直方向也给物品真实的支撑 */
-  for (const [ry, rr] of [[0.1, 1.02], [1.0, 0.985], [2.0, 0.965]]) {
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * Math.PI * 2;
-      const q = new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -Math.PI / 2 - a);
-      cageBody.addShape(
-        new CANNON.Box(new CANNON.Vec3(0.17, 0.045, 0.045)),
-        new CANNON.Vec3(Math.cos(a) * rr, ry, Math.sin(a) * rr),
-        q
-      );
-    }
-  }
   world.addBody(cageBody);
 
   /* 悬挂锚点（静态）+ 点约束：真实单摆，摆动衰减靠角阻尼 */
@@ -104,20 +92,17 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
   tileBody.addShape(new CANNON.Box(new CANNON.Vec3(0.31, 0.46, 0.21)));
   world.addBody(tileBody);
 
-  /* 初始位姿（笼局部）：扳手头部抵住 56.25° 栏杆间隙（正对默认相机），
-     内壁半径 1.05 − 头部径向半宽 0.24 → 头部中心最远 0.79，恰好在栏杆平面卡住 */
-  function wedgeSpawn() {
-    const phi = 56.25 * Math.PI / 180;
-    const dir = new CANNON.Vec3(Math.cos(phi) * 0.55, 0.83, Math.sin(phi) * 0.55);
-    dir.normalize();
-    const q = new CANNON.Quaternion().setFromVectors(new CANNON.Vec3(1, 0, 0), dir);
-    q.mult(new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(1, 0, 0), 50 * Math.PI / 180), q);
-    const off = q.vmult(new CANNON.Vec3(0.696, 0.088, 0));
-    const headC = new CANNON.Vec3(Math.cos(phi) * 0.79, 1.35, Math.sin(phi) * 0.79);
-    return { p: headC.vsub(off), q };
+  /* 初始位姿（笼局部）：扳手平放在笼底上（参考图 1 姿态），头部朝向默认相机；
+     幺鸡同样落底。物品都贴着笼底，不悬空 */
+  function floorSpawn() {
+    const yaw = -56.25 * Math.PI / 180;                 // 头部朝向默认相机一侧
+    const q = new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(0, 1, 0), yaw)
+      .mult(new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2));
+    const p = new CANNON.Vec3(Math.cos(-yaw) * 0.15, 0.17, Math.sin(-yaw) * 0.15);
+    return { p, q };
   }
   const SPAWN = {
-    wrench: wedgeSpawn(),
+    wrench: floorSpawn(),
     tile: { p: new CANNON.Vec3(0.15, 0.62, 0.05), q: new CANNON.Quaternion().setFromEuler(-0.08, 0.5, 0) },
   };
 

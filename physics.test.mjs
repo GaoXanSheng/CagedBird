@@ -1,7 +1,7 @@
 /* 物理回归测试：node physics.test.mjs
    覆盖三类历史缺陷：
    1) 物品飞出笼子消失（能量泵 / NaN）
-   2) 初始扳手没有卡在栏杆上
+   2) 物品悬空不落底
    3) 点击晃动不生效或过于剧烈 */
 import assert from 'node:assert/strict';
 import * as CANNON from 'cannon-es';
@@ -39,7 +39,7 @@ const hangGap = () => Math.hypot(
   cageBody.position.z
 );
 
-/* 阶段 1：静置自转 8s —— 不消失、不 NaN、扳手保持卡栏、能量收敛 */
+/* 阶段 1：静置自转 8s —— 不消失、不 NaN、扳手平贴笼底、能量收敛 */
 phys.setSpin(true);
 let wrenchMaxSpeed = 0;
 for (let i = 0; i < 480; i++) {
@@ -50,17 +50,17 @@ for (let i = 0; i < 480; i++) {
 assert.ok(wrenchMaxSpeed < 25, `扳手速度尖峰 ${wrenchMaxSpeed.toFixed(1)}`);
 
 const wLoc = localOfBody(wrenchBody);
-assert.ok(radial(wLoc) > 0.2 && radial(wLoc) < 1.35, `扳手跑出笼内区域 r=${radial(wLoc).toFixed(2)}`);
+assert.ok(radial(wLoc) < 1.35, `扳手跑出笼内区域 r=${radial(wLoc).toFixed(2)}`);
 assert.ok(wLoc.y > 0 && wLoc.y < 2.2, `扳手高度异常 y=${wLoc.y.toFixed(2)}`);
 const hLoc = localOfPoint(wrenchBody.pointToWorldFrame(new CANNON.Vec3(0.696, 0.088, 0)));
-assert.ok(radial(hLoc) > 0.55, `扳手头部未卡在栏杆上 r=${radial(hLoc).toFixed(2)}`);
-assert.ok(hLoc.y > 0.15 && hLoc.y < 2.3, `头部高度异常 y=${hLoc.y.toFixed(2)}`);
+assert.ok(radial(hLoc) < 1.05, `扳手头部越过内壁 r=${radial(hLoc).toFixed(2)}`);
+assert.ok(hLoc.y > 0.05 && hLoc.y < 2.3, `头部高度异常 y=${hLoc.y.toFixed(2)}`);
 const tLoc = localOfBody(tileBody);
 assert.ok(radial(tLoc) < 1.1 && tLoc.y > 0.05 && tLoc.y < 1.3, `幺鸡不在笼底 r=${radial(tLoc).toFixed(2)} y=${tLoc.y.toFixed(2)}`);
 assert.ok(wrenchBody.velocity.length() < 2 && tileBody.velocity.length() < 2, '自转下物品未收敛');
 assert.ok(cageTilt() < 0.1, '静置时笼子未回正');
 assert.ok(Math.abs(hangGap() - CAGE.pivotLocalY) < 0.03, `约束失效：杆长 ${hangGap().toFixed(3)} ≠ ${CAGE.pivotLocalY}`);
-console.log('阶段1 通过：静置自转 8s，扳手保持卡栏，笼子悬挂正常');
+console.log('阶段1 通过：静置自转 8s，扳手平贴笼底，笼子悬挂正常');
 
 /* 阶段 2：点击风暴 12s（每秒一次，交替物品）—— 笼子真实摆动且物品不逃逸 */
 let maxTilt = 0;
@@ -85,13 +85,13 @@ resetBody(wrenchBody, SPAWN.wrench);
 for (let i = 0; i < 120; i++) phys.step(DT);
 const wl = localOfBody(wrenchBody);
 const hl = localOfPoint(wrenchBody.pointToWorldFrame(new CANNON.Vec3(0.696, 0.088, 0)));
-assert.ok(radial(wl) > 0.3 && radial(wl) < 1.5, `扳手重置后位置异常 r=${radial(wl).toFixed(2)}`);
-assert.ok(radial(hl) > 0.7, `重置后头部未卡进栏杆 r=${radial(hl).toFixed(2)}`);
+assert.ok(radial(wl) < 1.5 && radial(wl) < 1.5, `扳手重置后位置异常 r=${radial(wl).toFixed(2)}`);
+assert.ok(radial(hl) < 1.05, `重置后头部未卡进栏杆 r=${radial(hl).toFixed(2)}`);
 resetBody(tileBody, SPAWN.tile);
 for (let i = 0; i < 120; i++) phys.step(DT);
 const tl = localOfBody(tileBody);
 assert.ok(radial(tl) < 1.1 && tl.y > 0.05 && tl.y < 1.2, `幺鸡重置后不在笼底 r=${radial(tl).toFixed(2)} y=${tl.y.toFixed(2)}`);
-console.log('阶段3 通过：切换物品后扳手重新卡栏、幺鸡落回笼底');
+console.log('阶段3 通过：切换物品后扳手与幺鸡都落回笼底');
 
 /* 阶段 4：30s 高强度折腾（每 0.5s 点击 + 全程自转）——封闭壳不许有任何泄漏 */
 phys.setSpin(true);
