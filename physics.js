@@ -20,7 +20,7 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
 
   const matItem = new CANNON.Material('item');
   const matCage = new CANNON.Material('cage');
-  world.addContactMaterial(new CANNON.ContactMaterial(matItem, matCage, { friction: 0.4, restitution: 0.38 }));
+  world.addContactMaterial(new CANNON.ContactMaterial(matItem, matCage, { friction: 0.55, restitution: 0.38 }));
   world.addContactMaterial(new CANNON.ContactMaterial(matItem, matItem, { friction: 0.4, restitution: 0.3 }));
 
   /* 笼子：动力学 compound（底盘 / 栏杆 / 穹顶锥壳 / 顶盖），质心即体原点（笼底中心） */
@@ -49,7 +49,7 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
     );
   }
   cageBody.addShape(new CANNON.Box(new CANNON.Vec3(0.15, 0.08, 0.15)), new CANNON.Vec3(0, 2.98, 0));
-  /* 三道横向箍环：竖直栏杆挡不住下滑，头部由箍环接住（与真实鸟笼一致） */
+  /* 三道横向箍环（与视觉一致）：竖直栏杆挡不住下滑，头部由箍环接住（与真实鸟笼一致） */
   for (const [ry, rr] of [[0.1, 1.02], [1.0, 0.985], [2.0, 0.965]]) {
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2;
@@ -130,16 +130,16 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
     }
   }
 
-  function shake(active) {                   // 点击笼子：冲量推笼身 + 抛起当前物品
+  function shake(active) {                   // 点击笼子：冲量推笼身，物品小幅受扰
     cageBody.wakeUp();
     const a = Math.random() * Math.PI * 2;
     const J = 4 + Math.random() * 4;
     cageBody.applyImpulse(new CANNON.Vec3(Math.cos(a) * J, 0, Math.sin(a) * J));
     const b = active === 'tile' ? tileBody : wrenchBody;
     b.wakeUp();
-    b.applyImpulse(
-      new CANNON.Vec3((Math.random() * 2 - 1) * 0.6, 0.4 + Math.random() * 0.5, (Math.random() * 2 - 1) * 0.6),
-      new CANNON.Vec3((Math.random() * 2 - 1) * 0.2, (Math.random() * 2 - 1) * 0.05, (Math.random() * 2 - 1) * 0.2)
+    b.applyImpulse(                          // 小幅扰动：物品主要随笼体晃动，而非各自乱飞
+      new CANNON.Vec3((Math.random() * 2 - 1) * 0.35, 0.2 + Math.random() * 0.3, (Math.random() * 2 - 1) * 0.35),
+      new CANNON.Vec3((Math.random() * 2 - 1) * 0.12, (Math.random() * 2 - 1) * 0.04, (Math.random() * 2 - 1) * 0.12)
     );
   }
 

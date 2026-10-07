@@ -387,8 +387,8 @@ function tubeAlong(pts, radius, mat, seg = 40) {
   m.castShadow = true;
   return m;
 }
-scene.add(tubeAlong([[-4.15, 4.3, 0], [-3.0, 4.42, 0.1], [-1.6, 4.38, -0.05], [0.4, 4.35, 0]], 0.14, barkMat));
-scene.add(tubeAlong([[-2.6, 4.44, 0.05], [-2.2, 5.0, 0.35], [-1.9, 5.3, 0.5]], 0.07, barkMat, 16));
+scene.add(tubeAlong([[-4.15, 4.6, 0], [-3.0, 4.72, 0.1], [-1.6, 4.68, -0.05], [0.4, 4.65, 0]], 0.14, barkMat));
+scene.add(tubeAlong([[-2.6, 4.74, 0.05], [-2.2, 5.3, 0.35], [-1.9, 5.6, 0.5]], 0.07, barkMat, 16));
 
 const leafMatA = new THREE.MeshStandardMaterial({ color: 0x3e7d33, roughness: 0.9, flatShading: true, envMapIntensity: 0.25 });
 const leafMatB = new THREE.MeshStandardMaterial({ color: 0x478c3a, roughness: 0.9, flatShading: true, envMapIntensity: 0.25 });
@@ -396,7 +396,7 @@ const leafMatC = new THREE.MeshStandardMaterial({ color: 0x356b2c, roughness: 0.
 const leafMats = [leafMatA, leafMatB, leafMatC];
 const crownPts = [
   [-4.2, 5.8, 0, 1.9], [-3.2, 5.2, 0.6, 1.3], [-5.2, 5.0, -0.4, 1.4],
-  [-4.0, 6.6, 0.5, 1.2], [-4.6, 5.0, 1.0, 1.1], [-3.0, 6.0, -0.7, 1.0], [-1.85, 5.45, 0.55, 0.85],
+  [-4.0, 6.6, 0.5, 1.2], [-4.6, 5.0, 1.0, 1.1], [-3.0, 6.0, -0.7, 1.0], [-1.85, 5.75, 0.55, 0.85],
 ];
 for (const [px, py, pz, r] of crownPts) {
   const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), leafMats[(Math.random() * 3) | 0]);
@@ -446,7 +446,7 @@ const cageMat = new THREE.MeshStandardMaterial({ color: 0x17181a, metalness: 0.8
 const baseMat = new THREE.MeshStandardMaterial({ color: 0x101114, metalness: 0.3, roughness: 0.9, envMapIntensity: 0.3 });
 
 const hangPivot = new THREE.Group();          // 悬挂点（树枝上，静止）
-hangPivot.position.set(0.4, 4.35, 0);
+hangPivot.position.set(0.4, 4.65, 0);         // 抬高 0.3：大摆角时笼底不蹭草地
 scene.add(hangPivot);
 
 function torus(r, tube, mat) { return new THREE.Mesh(new THREE.TorusGeometry(r, tube, 12, 40), mat); }
@@ -454,24 +454,26 @@ const loop = torus(0.2, 0.03, cageMat);       // 树枝缠绕环
 loop.rotation.y = Math.PI / 2;
 hangPivot.add(loop);
 
-for (let i = 0; i < 4; i++) {                 // 链条（静态悬挂；笼体摆动由物理驱动）
+const chainGroup = new THREE.Group();         // 链条：倾斜量取笼体的一半，看起来柔韧不脱节
+hangPivot.add(chainGroup);
+for (let i = 0; i < 4; i++) {
   const link = torus(0.095, 0.027, cageMat);
   link.position.y = -0.1 - i * 0.14;
   link.rotation.y = i % 2 ? Math.PI / 2 : 0;
-  hangPivot.add(link);
+  chainGroup.add(link);
 }
 
 const cageGroup = new THREE.Group();          // 笼体：位姿完全由物理刚体驱动
 cageGroup.position.y = -0.52 - 0.14 - 3.32;   // 链条末端接笼顶挂钩
 hangPivot.add(cageGroup);
 
-const base = new THREE.Mesh(new THREE.CylinderGeometry(1.04, 1.0, 0.1, 48), baseMat);
-base.position.y = 0.05;
+const base = new THREE.Mesh(new THREE.CylinderGeometry(1.04, 1.0, 0.05, 48), baseMat);
+base.position.y = 0.075;                      // 顶面仍是 0.1，与物理地板对齐；盘身减薄一半
 base.castShadow = base.receiveShadow = true;
 cageGroup.add(base);
-const rim = torus(1.02, 0.045, cageMat);
+const rim = torus(1.02, 0.032, cageMat);
 rim.rotation.x = Math.PI / 2;
-rim.position.y = 0.1;
+rim.position.y = 0.098;
 cageGroup.add(rim);
 
 const barGeo = new THREE.CylinderGeometry(0.028, 0.028, 1.9, 8);
@@ -643,6 +645,7 @@ const phys = createPhysics({
   origin: { x: hangPivot.position.x, y: hangPivot.position.y - CAGE.pivotLocalY, z: hangPivot.position.z },
 });
 const { cageBody, wrenchBody, tileBody, SPAWN, resetBody } = phys;
+const _yDir = new THREE.Vector3();
 
 function syncVisuals() {
   cageGroup.position.set(
@@ -655,6 +658,10 @@ function syncVisuals() {
   wrenchGroup.quaternion.copy(wrenchBody.quaternion);
   tileGroup.position.copy(tileBody.position);
   tileGroup.quaternion.copy(tileBody.quaternion);
+  /* 链条半跟随笼体倾斜：笼子摆动时链条被"拽"过去一半，不再各晃各的 */
+  _yDir.set(0, 1, 0).applyQuaternion(cageGroup.quaternion);
+  chainGroup.rotation.z = -Math.asin(THREE.MathUtils.clamp(_yDir.x, -1, 1)) * 0.45;
+  chainGroup.rotation.x = Math.asin(THREE.MathUtils.clamp(_yDir.z, -1, 1)) * 0.45;
 }
 syncVisuals();
 
