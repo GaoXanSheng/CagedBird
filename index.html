@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>笼中物 · 扳手与幺鸡</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0e1214; }
+  body { font-family: system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; touch-action: none; }
+
+  /* ---------- 控制面板：五金工具风 ---------- */
+  #ui {
+    position: fixed; top: 16px; left: 16px; width: 236px;
+    background: #191c1e;
+    border: 1px solid #2c3237;
+    border-radius: 8px;
+    padding: 13px 14px 11px;
+    color: #dfe5e9; user-select: none; z-index: 10;
+    box-shadow: 0 3px 14px rgba(0, 0, 0, 0.25);
+    font-size: 12px;
+  }
+  #ui header { display: flex; align-items: baseline; gap: 8px; }
+  #ui h1 { font-size: 14px; font-weight: 650; letter-spacing: 0.5px; }
+  #ui header span { font-size: 10px; color: #78838b; }
+  :focus-visible { outline: 1px solid #d9a441; outline-offset: 2px; }
+  .sec { margin-top: 12px; }
+  .cap {
+    font-size: 10px; color: #7d8890; margin-bottom: 6px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  }
+  .seg { display: flex; gap: 4px; }
+  .seg button {
+    flex: 1; padding: 6px 0; font-size: 12px; cursor: pointer;
+    color: #c6ced4; background: #23282c;
+    border: 1px solid #31383d; border-radius: 6px;
+    transition: background .15s, color .15s, border-color .15s;
+    font-family: inherit;
+  }
+  .seg button:hover { background: #2b3136; }
+  .seg button.active { background: #d9a441; border-color: #d9a441; color: #17110a; font-weight: 650; }
+  .colors { display: flex; gap: 6px; }
+  .colors label {
+    flex: 1; display: flex; flex-direction: column; gap: 3px;
+    font-size: 10px; color: #98a2aa; align-items: stretch;
+  }
+  .colors.one label { flex-direction: row; align-items: center; justify-content: space-between; }
+  .colors input[type=color] {
+    width: 100%; height: 24px; padding: 1px;
+    border: 1px solid #31383d; border-radius: 5px;
+    background: none; cursor: pointer;
+  }
+  .colors input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+  .colors input[type=color]::-webkit-color-swatch { border: none; border-radius: 3px; }
+  .presets { display: flex; gap: 4px; margin-top: 8px; }
+  .presets button {
+    flex: 1; padding: 0 0 3px; font-size: 10px; color: #aeb8bf; cursor: pointer;
+    background: #202427; border: 1px solid #31383d; border-radius: 6px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-family: inherit; transition: border-color .15s;
+  }
+  .presets button i { display: block; width: 100%; height: 9px; border-radius: 4px 4px 0 0; }
+  .presets button span { padding: 0 2px; }
+  .presets button:hover { border-color: #d9a441; color: #e6edf1; }
+  .slider { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 10px; color: #98a2aa; }
+  .slider input { flex: 1; accent-color: #d9a441; }
+  .hint { font-size: 10px; color: #6f7a82; margin-top: 6px; line-height: 1.5; }
+  .checks { display: flex; gap: 12px; margin-top: 12px; }
+  .checks label { font-size: 11px; color: #b9c2c9; display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .checks input { accent-color: #d9a441; }
+  .tip {
+    margin-top: 11px; padding-top: 9px; border-top: 1px solid #262c30;
+    font-size: 10px; color: #646e76;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  }
+  .disabled { opacity: 0.35; pointer-events: none; }
+  .hidden { display: none !important; }
+
+  /* ---------- 加载/错误遮罩 ---------- */
+  #overlay {
+    position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px;
+    background: #10161a; color: #cfe0e8; font-size: 14px; letter-spacing: 2px;
+    transition: opacity .6s ease;
+  }
+  #overlay.done { opacity: 0; pointer-events: none; }
+  .spin {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.15); border-top-color: #e8a33d;
+    animation: sp 0.9s linear infinite;
+  }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  #overlay .err { color: #ff9a8a; max-width: 320px; text-align: center; line-height: 1.7; }
+
+  @media (max-width: 560px) {
+    #ui { width: calc(100% - 24px); left: 12px; top: 12px; padding: 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="ui">
+  <header><h1>笼中物</h1><span>铁笼 · 扳手 · 幺鸡</span></header>
+
+  <div class="sec">
+    <div class="cap">笼中之物</div>
+    <div class="seg">
+      <button id="btnWrench" class="active">扳手</button>
+      <button id="btnTile">幺鸡</button>
+    </div>
+  </div>
+
+  <div class="sec" id="paintBox">
+    <div class="cap">涂装</div>
+    <div class="seg">
+      <button id="modeGrad" class="active">渐变</button>
+      <button id="modeBrush">笔刷</button>
+    </div>
+
+    <div id="gradBox" class="sec">
+      <div class="colors">
+        <label>头部<input type="color" id="cHead" value="#e2761b"></label>
+        <label>中段<input type="color" id="cMid" value="#3f9b3f"></label>
+        <label>尾环<input type="color" id="cTail" value="#3aa7c9"></label>
+      </div>
+      <div class="presets">
+        <button data-p="ref" title="参考涂装"><i style="background:linear-gradient(90deg,#3aa7c9,#3f9b3f,#e2761b)"></i><span>参考</span></button>
+        <button data-p="steel" title="金属原色"><i style="background:linear-gradient(90deg,#9aa1a8,#b9bec4)"></i><span>金属</span></button>
+        <button data-p="sunset" title="落日"><i style="background:linear-gradient(90deg,#f0c93b,#e2603b,#8a3a78)"></i><span>落日</span></button>
+        <button data-p="jade" title="墨玉"><i style="background:linear-gradient(90deg,#163a2c,#2e8b57,#a8e6c0)"></i><span>墨玉</span></button>
+        <button data-p="rand" title="随机配色"><i style="background:#2b3136"></i><span>随机</span></button>
+      </div>
+    </div>
+
+    <div id="brushBox" class="sec hidden">
+      <div class="colors one">
+        <label>笔刷颜色<input type="color" id="cBrush" value="#d43a2f"></label>
+      </div>
+      <div class="slider">大小<input type="range" id="brushSize" min="0.5" max="2.6" step="0.1" value="1.4"></div>
+      <div class="hint">在扳手上按住拖动即可上色，涂色时视角不会转动</div>
+    </div>
+  </div>
+
+  <div class="checks">
+    <label><input type="checkbox" id="chkAuto"> 自动环绕</label>
+    <label><input type="checkbox" id="chkSpin" checked> 笼子慢转</label>
+  </div>
+  <div class="tip">拖拽旋转 · 滚轮缩放 · 点击笼子晃动</div>
+</div>
+
+<div id="overlay"><div class="spin"></div><div id="ovText">正在生长一棵树…</div></div>
+
+<script>
+  window.addEventListener('error', () => {
+    const ov = document.getElementById('overlay'); if (!ov || ov.classList.contains('done')) return;
+    ov.innerHTML = '<div class="err">资源加载失败 —— 本页面需要联网从 CDN（jsdelivr）加载 Three.js。<br>请检查网络后刷新。</div>';
+  }, true);
+</script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const $ = id => document.getElementById(id);
+const rand = (a, b) => a + Math.random() * (b - a);
+
+/* ================================================================
+   渲染器 / 场景 / 相机
+================================================================ */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+$('app').appendChild(renderer.domElement);
+const MAX_ANISO = renderer.capabilities.getMaxAnisotropy();
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xe3efe0, 16, 48);
+
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(3.6, 3.2, 5.2);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 2.05, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 2.4;
+controls.maxDistance = 15;
+controls.maxPolarAngle = 1.62;
+controls.minPolarAngle = 0.12;
+controls.autoRotateSpeed = 0.9;
+
+/* 环境反射（让黑金属丝有高光） */
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+/* 灯光 */
+const sun = new THREE.DirectionalLight(0xfff1da, 2.4);
+sun.position.set(7, 9, 4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -8; sun.shadow.camera.right = 8;
+sun.shadow.camera.top = 10;  sun.shadow.camera.bottom = -4;
+sun.shadow.camera.near = 1;  sun.shadow.camera.far = 30;
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.02;
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xcfe5ff, 0x51703f, 0.75));
+
+/* ================================================================
+   程序化贴图
+================================================================ */
+function canvasTexture(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = MAX_ANISO;
+  return t;
+}
+
+const grassTex = canvasTexture(256, 256, (x, w, h) => {
+  x.fillStyle = '#5f9e4a'; x.fillRect(0, 0, w, h);
+  const cs = ['#548c40', '#6cb055', '#578f42', '#68a84e', '#4c8339', '#77b85e'];
+  for (let i = 0; i < 5200; i++) {
+    x.fillStyle = cs[(Math.random() * cs.length) | 0];
+    x.globalAlpha = rand(0.25, 0.7);
+    x.fillRect(Math.random() * w, Math.random() * h, rand(1, 2.4), rand(1, 3.2));
+  }
+  x.globalAlpha = 1;
+});
+grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
+grassTex.repeat.set(14, 14);
+
+const barkTex = canvasTexture(128, 256, (x, w, h) => {
+  x.fillStyle = '#6b5138'; x.fillRect(0, 0, w, h);
+  for (let i = 0; i < 60; i++) {                       // 纵向裂纹
+    x.strokeStyle = ['#57422c', '#7a5f42', '#4a3826'][(Math.random() * 3) | 0];
+    x.lineWidth = rand(1, 3);
+    const px = Math.random() * w;
+    x.beginPath(); x.moveTo(px, 0);
+    x.bezierCurveTo(px + rand(-8, 8), h * 0.33, px + rand(-8, 8), h * 0.66, px + rand(-10, 10), h);
+    x.stroke();
+  }
+});
+barkTex.wrapS = barkTex.wrapT = THREE.RepeatWrapping;
+barkTex.repeat.set(2, 3);
+
+const knurlBump = canvasTexture(64, 64, (x, w, h) => {   // 蜗杆滚花
+  x.fillStyle = '#808080'; x.fillRect(0, 0, w, h);
+  x.strokeStyle = '#c8c8c8'; x.lineWidth = 3;
+  for (let i = -h; i < w + h; i += 8) {
+    x.beginPath(); x.moveTo(i, 0); x.lineTo(i + h, h); x.stroke();
+    x.beginPath(); x.moveTo(i + h, 0); x.lineTo(i, h); x.stroke();
+  }
+});
+knurlBump.wrapS = knurlBump.wrapT = THREE.RepeatWrapping;
+knurlBump.repeat.set(6, 2);
+
+/* 幺鸡贴图：手绘风绿雀 + 红睛 */
+const birdTex = canvasTexture(480, 768, (x) => {
+  const g = x.createLinearGradient(0, 0, 0, 768);
+  g.addColorStop(0, '#f7f3e8'); g.addColorStop(1, '#eee7d6');
+  x.fillStyle = g; x.fillRect(0, 0, 480, 768);
+  const green = '#1f8a4e', dark = '#135c3a', lime = '#4fb377', red = '#cf3a2e';
+  x.lineJoin = 'round'; x.lineCap = 'round';
+
+  // 整体放大鸟形，铺满牌面
+  x.save();
+  x.translate(240, 384); x.scale(1.18, 1.18); x.translate(-240, -384);
+
+  const leaf = (bx, by, ang, len, wd, fill, lw) => {      // 羽毛/叶片
+    const a = ang * Math.PI / 180;
+    const tx = bx + Math.cos(a) * len, ty = by + Math.sin(a) * len;
+    const mx = (bx + tx) / 2, my = (by + ty) / 2;
+    const px = -Math.sin(a) * wd, py = Math.cos(a) * wd;
+    x.beginPath(); x.moveTo(bx, by);
+    x.quadraticCurveTo(mx + px, my + py, tx, ty);
+    x.quadraticCurveTo(mx - px, my - py, bx, by);
+    x.fillStyle = fill; x.fill();
+    x.strokeStyle = dark; x.lineWidth = lw; x.stroke();
+  };
+
+  // 尾羽扇（左下）
+  leaf(252, 498, 195, 215, 62, green, 7);
+  leaf(252, 498, 225, 240, 66, green, 7);
+  leaf(252, 498, 255, 205, 58, green, 7);
+
+  // 头冠
+  leaf(326, 196, 68, 56, 22, green, 5);
+  leaf(330, 190, 94, 60, 22, green, 5);
+  leaf(334, 194, 122, 54, 20, green, 5);
+
+  // 身体
+  x.beginPath();
+  x.ellipse(255, 385, 92, 128, -0.35, 0, Math.PI * 2);
+  x.fillStyle = green; x.fill();
+  x.strokeStyle = dark; x.lineWidth = 7; x.stroke();
+
+  // 翅膀
+  x.beginPath();
+  x.ellipse(232, 398, 52, 82, -0.5, 0, Math.PI * 2);
+  x.fillStyle = lime; x.fill();
+  x.strokeStyle = dark; x.lineWidth = 6; x.stroke();
+  x.lineWidth = 5;
+  for (let i = 0; i < 3; i++) {
+    x.beginPath();
+    x.arc(228, 452 - i * 34, 46 - i * 6, -2.5, -0.7);
+    x.stroke();
+  }
+
+  // 头
+  x.beginPath(); x.arc(335, 240, 60, 0, Math.PI * 2);
+  x.fillStyle = green; x.fill();
+  x.strokeStyle = dark; x.lineWidth = 7; x.stroke();
+
+  // 喙
+  x.beginPath();
+  x.moveTo(388, 224); x.lineTo(432, 244); x.lineTo(388, 264); x.closePath();
+  x.fillStyle = dark; x.fill();
+
+  // 眼睛（红睛如幺鸡）
+  x.beginPath(); x.arc(330, 236, 20, 0, Math.PI * 2);
+  x.fillStyle = '#f6f2e7'; x.fill();
+  x.strokeStyle = dark; x.lineWidth = 5; x.stroke();
+  x.beginPath(); x.arc(330, 236, 12, 0, Math.PI * 2);
+  x.fillStyle = red; x.fill();
+  x.beginPath(); x.arc(330, 236, 5, 0, Math.PI * 2);
+  x.fillStyle = '#20140e'; x.fill();
+
+  // 爪
+  x.strokeStyle = dark; x.lineWidth = 9;
+  x.beginPath(); x.moveTo(230, 502); x.lineTo(224, 560); x.stroke();
+  x.beginPath(); x.moveTo(284, 505); x.lineTo(290, 562); x.stroke();
+  x.lineWidth = 6;
+  for (const [fx, fy] of [[224, 560], [290, 562]]) {
+    for (const d of [-16, 0, 16]) {
+      x.beginPath(); x.moveTo(fx, fy); x.lineTo(fx + d, fy + 16); x.stroke();
+    }
+  }
+  x.restore();
+});
+
+/* ================================================================
+   天空 / 地面 / 树 / 环境散布
+================================================================ */
+scene.add(new THREE.Mesh(
+  new THREE.SphereGeometry(60, 32, 16),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: {
+      top: { value: new THREE.Color(0x86b6e0) },
+      bot: { value: new THREE.Color(0xe3efe0) },
+    },
+    vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader: `uniform vec3 top; uniform vec3 bot; varying vec3 vP;
+      void main(){ float h = smoothstep(-0.05, 0.45, vP.y); gl_FragColor = vec4(mix(bot, top, h), 1.0); }`,
+  })
+));
+
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(45, 64),
+  new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1, metalness: 0, envMapIntensity: 0.25 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+/* ---- 树：树干 + 横枝 + 树冠 ---- */
+const barkMat = new THREE.MeshStandardMaterial({ map: barkTex, bumpMap: barkTex, bumpScale: 0.4, roughness: 0.95, envMapIntensity: 0.2 });
+const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.55, 5.4, 12), barkMat);
+trunk.position.set(-4.3, 2.7, 0);
+trunk.rotation.z = 0.04;
+trunk.castShadow = true;
+scene.add(trunk);
+
+function tubeAlong(pts, radius, mat, seg = 40) {
+  const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), seg, radius, 10), mat);
+  m.castShadow = true;
+  return m;
+}
+scene.add(tubeAlong([[-4.15, 4.3, 0], [-3.0, 4.42, 0.1], [-1.6, 4.38, -0.05], [0.4, 4.35, 0]], 0.14, barkMat));
+scene.add(tubeAlong([[-2.6, 4.44, 0.05], [-2.2, 5.0, 0.35], [-1.9, 5.3, 0.5]], 0.07, barkMat, 16));
+
+const leafMatA = new THREE.MeshStandardMaterial({ color: 0x3e7d33, roughness: 0.9, flatShading: true, envMapIntensity: 0.25 });
+const leafMatB = new THREE.MeshStandardMaterial({ color: 0x478c3a, roughness: 0.9, flatShading: true, envMapIntensity: 0.25 });
+const leafMatC = new THREE.MeshStandardMaterial({ color: 0x356b2c, roughness: 0.9, flatShading: true, envMapIntensity: 0.25 });
+const leafMats = [leafMatA, leafMatB, leafMatC];
+const crownPts = [
+  [-4.2, 5.8, 0, 1.9], [-3.2, 5.2, 0.6, 1.3], [-5.2, 5.0, -0.4, 1.4],
+  [-4.0, 6.6, 0.5, 1.2], [-4.6, 5.0, 1.0, 1.1], [-3.0, 6.0, -0.7, 1.0], [-1.85, 5.45, 0.55, 0.85],
+];
+for (const [px, py, pz, r] of crownPts) {
+  const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), leafMats[(Math.random() * 3) | 0]);
+  m.position.set(px, py, pz);
+  m.scale.y = 0.85;
+  m.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+  m.castShadow = true;
+  scene.add(m);
+}
+
+/* ---- 远处树木 / 灌木 / 石头 ---- */
+function distantTree(px, pz, s) {
+  const g = new THREE.Group();
+  const t = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.18 * s, 1.7 * s, 8), barkMat);
+  t.position.y = 0.85 * s; t.castShadow = true; g.add(t);
+  const c1 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.15 * s, 1), leafMats[(Math.random() * 3) | 0]);
+  c1.position.y = 2.15 * s; c1.scale.y = 1.15; c1.castShadow = true; g.add(c1);
+  const c2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.75 * s, 1), leafMats[(Math.random() * 3) | 0]);
+  c2.position.set(0.5 * s, 1.7 * s, 0.2 * s); c2.castShadow = true; g.add(c2);
+  g.position.set(px, 0, pz);
+  scene.add(g);
+}
+for (const [px, pz, s] of [[10, -8, 1.6], [-9, -12, 2], [14, 4, 1.8], [-14, 8, 1.7], [8, 12, 1.5], [-6, -18, 2.4], [18, -4, 2], [-16, -4, 1.4]]) distantTree(px, pz, s);
+
+const bushGeo = new THREE.IcosahedronGeometry(1, 1);
+for (const [px, pz, r] of [[3.5, -2.5, 0.8], [-3, 3, 0.7], [5, 3, 0.9], [-5, -3.5, 0.6], [2.5, 4.5, 0.55], [-6, 1.5, 0.75]]) {
+  const m = new THREE.Mesh(bushGeo, leafMats[(Math.random() * 3) | 0]);
+  m.position.set(px, r * 0.45, pz);
+  m.scale.set(r, r * 0.6, r);
+  m.rotation.y = Math.random() * 3;
+  m.castShadow = true;
+  scene.add(m);
+}
+const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8a8d90, roughness: 1, flatShading: true, envMapIntensity: 0.2 });
+for (const [px, pz, r] of [[1.8, -1.2, 0.26], [-2.4, -2, 0.34], [3, 1.8, 0.2], [-1.6, 3.2, 0.17]]) {
+  const m = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), stoneMat);
+  m.position.set(px, r * 0.5, pz);
+  m.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+  m.castShadow = true;
+  scene.add(m);
+}
+
+/* ================================================================
+   铁丝鸟笼
+   结构（局部坐标，底部为 y=0）：
+   底盘 y0.1 → 立柱到 y2.0 → 穹顶收拢到 y3.06 → 顶环+挂钩
+================================================================ */
+const cageMat = new THREE.MeshStandardMaterial({ color: 0x17181a, metalness: 0.85, roughness: 0.38, envMapIntensity: 1.0 });
+const baseMat = new THREE.MeshStandardMaterial({ color: 0x101114, metalness: 0.3, roughness: 0.9, envMapIntensity: 0.3 });
+
+const hangPivot = new THREE.Group();          // 悬挂点（树枝上）
+hangPivot.position.set(0.4, 4.35, 0);
+scene.add(hangPivot);
+
+/* 树枝上的缠绕环 + 链条 */
+function torus(r, tube, mat) { return new THREE.Mesh(new THREE.TorusGeometry(r, tube, 12, 40), mat); }
+const loop = torus(0.2, 0.03, cageMat);
+loop.rotation.y = Math.PI / 2;
+hangPivot.add(loop);
+
+const swayGroup = new THREE.Group();          // 摆动（链条+笼子整体）
+hangPivot.add(swayGroup);
+for (let i = 0; i < 4; i++) {
+  const link = torus(0.095, 0.027, cageMat);
+  link.position.y = -0.1 - i * 0.14;
+  link.rotation.y = i % 2 ? Math.PI / 2 : 0;
+  swayGroup.add(link);
+}
+
+const cageGroup = new THREE.Group();          // 笼体（可自转）
+cageGroup.position.y = -0.52 - 0.14 - 3.32;   // 链条末端接笼顶挂钩
+swayGroup.add(cageGroup);
+
+/* 底盘 */
+const base = new THREE.Mesh(new THREE.CylinderGeometry(1.04, 1.0, 0.1, 48), baseMat);
+base.position.y = 0.05;
+base.castShadow = base.receiveShadow = true;
+cageGroup.add(base);
+const rim = torus(1.02, 0.045, cageMat);
+rim.rotation.x = Math.PI / 2;
+rim.position.y = 0.1;
+cageGroup.add(rim);
+
+/* 立柱 ×16 */
+const barGeo = new THREE.CylinderGeometry(0.028, 0.028, 1.9, 8);
+for (let i = 0; i < 16; i++) {
+  const a = i * Math.PI * 2 / 16;
+  const bar = new THREE.Mesh(barGeo, cageMat);
+  bar.position.set(Math.cos(a) * 0.965, 1.05, Math.sin(a) * 0.965);
+  bar.castShadow = true;
+  cageGroup.add(bar);
+}
+
+/* 横箍环 */
+for (const [y, r, t] of [[1.0, 0.985, 0.034], [2.0, 0.965, 0.04]]) {
+  const ring = torus(r, t, cageMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = y;
+  ring.castShadow = true;
+  cageGroup.add(ring);
+}
+
+/* 穹顶肋条 ×8 + 穹顶环 */
+for (let i = 0; i < 8; i++) {
+  const a = i * Math.PI * 2 / 8 + Math.PI / 16;
+  const c = Math.cos(a), s = Math.sin(a);
+  const rib = tubeAlong([
+    [0.10 * c, 3.06, 0.10 * s],
+    [0.45 * c, 2.85, 0.45 * s],
+    [0.78 * c, 2.50, 0.78 * s],
+    [0.965 * c, 2.00, 0.965 * s],
+  ], 0.03, cageMat, 24);
+  cageGroup.add(rib);
+}
+const domeRing = torus(0.78, 0.03, cageMat);
+domeRing.rotation.x = Math.PI / 2;
+domeRing.position.y = 2.5;
+cageGroup.add(domeRing);
+
+/* 顶环 + 顶珠 + 挂钩环 */
+const apexRing = torus(0.1, 0.03, cageMat);
+apexRing.rotation.x = Math.PI / 2;
+apexRing.position.y = 3.08;
+cageGroup.add(apexRing);
+const finial = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 12), cageMat);
+finial.position.y = 3.17;
+cageGroup.add(finial);
+const hookRing = torus(0.12, 0.032, cageMat);
+hookRing.position.y = 3.32;
+cageGroup.add(hookRing);
+
+/* 门扣小细节 */
+const knob = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 10), cageMat);
+knob.position.set(0, 1.35, 1.02);
+cageGroup.add(knob);
+const latch = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 0.028), cageMat);
+latch.position.set(0, 1.12, 0.995);
+cageGroup.add(latch);
+
+/* ================================================================
+   扳手（挤出成型，顶点色渐变涂装，可笔刷涂色）
+   局部坐标：handle 沿 X 轴，整体 -5.6..5.73，头部在 +X 端
+================================================================ */
+const wrenchGroup = new THREE.Group();
+wrenchGroup.scale.setScalar(0.16);
+wrenchGroup.position.set(0.02, 0.72, 0.04);
+wrenchGroup.rotation.set(0.08, 0.55, 2.45);
+cageGroup.add(wrenchGroup);
+
+const paintSteel = new THREE.MeshStandardMaterial({
+  color: 0xffffff, vertexColors: true, metalness: 0.65, roughness: 0.36, envMapIntensity: 0.9,
+});
+const paintMeshes = [];
+
+function extrude(shape, depth = 0.4, bevel = 0.08) {
+  const g = new THREE.ExtrudeGeometry(shape, {
+    depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 48,
+  });
+  g.translate(0, 0, -depth / 2);
+  return g;
+}
+function addPaintMesh(geo) {
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 3), 3));
+  const m = new THREE.Mesh(geo, paintSteel);
+  m.castShadow = m.receiveShadow = true;
+  wrenchGroup.add(m);
+  paintMeshes.push(m);
+  return m;
+}
+
+/* 手柄：圆尾 + 挂环孔，右端接入头部 */
+{
+  const s = new THREE.Shape();
+  s.absarc(0.55, 0, 0.55, Math.PI / 2, Math.PI * 1.5, false);   // 圆尾
+  s.lineTo(8.9, -0.62);
+  s.lineTo(8.9, 0.62);
+  s.lineTo(2.0, 0.55);
+  const hole = new THREE.Path();
+  hole.absarc(0.55, 0, 0.26, 0, Math.PI * 2, true);
+  s.holes.push(hole);
+  const g = extrude(s);
+  g.translate(-5.6, 0, 0);
+  addPaintMesh(g);
+}
+/* 颈部：衔接手柄与头环（避开头环中孔） */
+{
+  const s = new THREE.Shape();
+  s.moveTo(8.9, -0.72); s.lineTo(10.45, -0.72); s.lineTo(10.45, -0.06); s.lineTo(8.9, -0.06);
+  const g = extrude(s);
+  g.translate(-5.6, 0, 0);
+  addPaintMesh(g);
+}
+/* 头环：C 形（外圆 r1.38 + 内圆 r0.62 + 顶部开口钳口） */
+{
+  const R = 1.38, r = 0.62, hw = 0.3;
+  const aOut = Math.atan2(Math.sqrt(R * R - hw * hw), hw);
+  const aIn = Math.atan2(Math.sqrt(r * r - hw * hw), hw);
+  const s = new THREE.Shape();
+  s.absarc(0, 0, R, aOut, Math.PI - aOut - Math.PI * 2, true);          // 外圈大弧（绕过底部）
+  s.lineTo(-hw, Math.sqrt(r * r - hw * hw));                             // 钳口左壁
+  s.absarc(0, 0, r, Math.PI - aIn, aIn - Math.PI * 2, true);            // 内孔下半弧
+  s.lineTo(hw, Math.sqrt(R * R - hw * hw));                              // 钳口右壁
+  const g = extrude(s);
+  g.translate(9.95 - 5.6, 0.55, 0);
+  addPaintMesh(g);
+}
+/* 蜗杆调节螺杆（钢色滚花，不参与涂装） */
+{
+  const g = new THREE.CylinderGeometry(0.21, 0.21, 1.1, 24);
+  g.rotateZ(Math.PI / 2);
+  g.translate(9.95 - 5.6, 0.8, 0);
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+    color: 0xc9ced4, metalness: 0.95, roughness: 0.3, bumpMap: knurlBump, bumpScale: 0.6, envMapIntensity: 1.0,
+  }));
+  m.castShadow = true;
+  wrenchGroup.add(m);
+}
+
+/* ---- 渐变涂装（尾环 → 中段 → 头部）---- */
+const paintState = { head: '#e2761b', mid: '#3f9b3f', tail: '#3aa7c9' };
+const X0 = -5.6, X1 = 9.95 + 1.38 - 5.6;
+function applyGradient() {
+  const cT = new THREE.Color(paintState.tail), cM = new THREE.Color(paintState.mid), cH = new THREE.Color(paintState.head);
+  const tmp = new THREE.Color();
+  for (const mesh of paintMeshes) {
+    const pos = mesh.geometry.attributes.position, col = mesh.geometry.attributes.color;
+    for (let i = 0; i < pos.count; i++) {
+      const t = THREE.MathUtils.clamp((pos.getX(i) - X0) / (X1 - X0), 0, 1);
+      if (t < 0.45) tmp.copy(cT).lerp(cM, t / 0.45);
+      else tmp.copy(cM).lerp(cH, (t - 0.45) / 0.55);
+      col.setXYZ(i, tmp.r, tmp.g, tmp.b);
+    }
+    col.needsUpdate = true;
+  }
+}
+applyGradient();
+
+/* ================================================================
+   幺鸡麻将牌
+================================================================ */
+const tileGroup = new THREE.Group();
+tileGroup.position.set(0.05, 0.62, 0.1);
+tileGroup.rotation.set(-0.1, 0.4, 0);
+cageGroup.add(tileGroup);
+{
+  const ivory = new THREE.MeshPhysicalMaterial({
+    color: 0xf2ede0, roughness: 0.42, metalness: 0, clearcoat: 0.55, clearcoatRoughness: 0.3, envMapIntensity: 0.6,
+  });
+  const body = new THREE.Mesh(new RoundedBoxGeometry(0.62, 0.92, 0.42, 4, 0.06), ivory);
+  body.castShadow = body.receiveShadow = true;
+  tileGroup.add(body);
+  const face = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.47, 0.77),
+    new THREE.MeshStandardMaterial({ map: birdTex, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -2 })
+  );
+  face.position.z = 0.2112;
+  tileGroup.add(face);
+}
+
+/* ================================================================
+   物件切换（弹入动画）
+================================================================ */
+let current = 'wrench';
+wrenchGroup.visible = true; tileGroup.visible = false;
+let popStart = -1;
+const easeOutBack = t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+
+function setItem(name) {
+  if (name === current) return;
+  current = name;
+  wrenchGroup.visible = name === 'wrench';
+  tileGroup.visible = name === 'tile';
+  (name === 'wrench' ? wrenchGroup : tileGroup).scale.setScalar(0.001);
+  popStart = performance.now();
+  resetBody(name === 'wrench' ? wrenchBody : tileBody, SPAWN[name]);
+  wrenchBody.active = name === 'wrench';
+  tileBody.active = name === 'tile';
+  $('btnWrench').classList.toggle('active', name === 'wrench');
+  $('btnTile').classList.toggle('active', name === 'tile');
+  $('paintBox').classList.toggle('disabled', name !== 'wrench');
+  if (name !== 'wrench') stopPainting();
+}
+$('btnWrench').onclick = () => setItem('wrench');
+$('btnTile').onclick = () => setItem('tile');
+
+/* ================================================================
+   涂装 UI
+================================================================ */
+const bindColor = (id, key) => $(id).addEventListener('input', e => { paintState[key] = e.target.value; applyGradient(); });
+bindColor('cHead', 'head'); bindColor('cMid', 'mid'); bindColor('cTail', 'tail');
+
+const PRESETS = {
+  ref: ['#e2761b', '#3f9b3f', '#3aa7c9'],
+  steel: ['#b9bec4', '#aeb4ba', '#9aa1a8'],
+  sunset: ['#e2603b', '#c94a6a', '#f0c93b'],
+  jade: ['#a8e6c0', '#2e8b57', '#163a2c'],
+};
+document.querySelectorAll('.presets button').forEach(b => {
+  b.onclick = () => {
+    if (b.dataset.p === 'rand') {
+      const hue = Math.random() * 360;
+      ['head', 'mid', 'tail'].forEach((k, i) => {
+        paintState[k] = '#' + new THREE.Color().setHSL(((hue + i * 55) % 360) / 360, 0.62, 0.55).getHexString();
+      });
+    } else {
+      [paintState.head, paintState.mid, paintState.tail] = PRESETS[b.dataset.p];
+    }
+    $('cHead').value = paintState.head; $('cMid').value = paintState.mid; $('cTail').value = paintState.tail;
+    applyGradient();
+  };
+});
+
+/* 渐变 / 笔刷模式切换 */
+let brushMode = false, brushColor = '#d43a2f', brushRadius = 1.4;
+$('modeGrad').onclick = () => {
+  brushMode = false;
+  $('modeGrad').classList.add('active'); $('modeBrush').classList.remove('active');
+  $('gradBox').classList.remove('hidden'); $('brushBox').classList.add('hidden');
+};
+$('modeBrush').onclick = () => {
+  brushMode = true;
+  $('modeBrush').classList.add('active'); $('modeGrad').classList.remove('active');
+  $('brushBox').classList.remove('hidden'); $('gradBox').classList.add('hidden');
+};
+$('cBrush').addEventListener('input', e => brushColor = e.target.value);
+$('brushSize').addEventListener('input', e => brushRadius = parseFloat(e.target.value));
+
+/* 笔刷涂色 / 点击晃动：共用同一套射线拾取 */
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let painting = false;
+function updateRay(ev) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+}
+function paintAt(ev) {
+  updateRay(ev);
+  const hits = ray.intersectObjects(paintMeshes, false);
+  if (!hits.length) return;
+  const local = wrenchGroup.worldToLocal(hits[0].point.clone());
+  const c = new THREE.Color(brushColor), tmp = new THREE.Color();
+  for (const mesh of paintMeshes) {
+    const pos = mesh.geometry.attributes.position, col = mesh.geometry.attributes.color;
+    for (let i = 0; i < pos.count; i++) {
+      const dx = pos.getX(i) - local.x, dy = pos.getY(i) - local.y, dz = pos.getZ(i) - local.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d < brushRadius) {
+        const w = Math.pow(1 - d / brushRadius, 1.4);
+        tmp.fromBufferAttribute(col, i).lerp(c, w);
+        col.setXYZ(i, tmp.r, tmp.g, tmp.b);
+      }
+    }
+    col.needsUpdate = true;
+  }
+}
+function stopPainting() { if (painting) { painting = false; controls.enabled = true; } }
+renderer.domElement.addEventListener('pointerdown', ev => {
+  updateRay(ev);
+  /* 笔刷模式下按在扳手上 → 涂色（视角锁定） */
+  if (brushMode && current === 'wrench' && ray.intersectObjects(paintMeshes, false).length) {
+    painting = true;
+    controls.enabled = false;
+    paintAt(ev);
+    return;
+  }
+  /* 点击笼子或笼内物品 → 晃动笼子，物品被抛起 */
+  const itemHit = current === 'wrench'
+    ? ray.intersectObject(wrenchGroup, true).length
+    : ray.intersectObject(tileGroup, true).length;
+  if (itemHit || ray.intersectObjects(cageMeshes, false).length) shakeCage();
+});
+/* 悬停指针：可点击处显示抓手 */
+renderer.domElement.addEventListener('pointermove', ev => {
+  if (painting) { renderer.domElement.style.cursor = 'crosshair'; return; }
+  updateRay(ev);
+  let hit = ray.intersectObjects(cageMeshes, false).length > 0;
+  if (!hit) hit = current === 'wrench'
+    ? ray.intersectObject(wrenchGroup, true).length > 0
+    : ray.intersectObject(tileGroup, true).length > 0;
+  renderer.domElement.style.cursor = hit ? 'grab' : '';
+});
+window.addEventListener('pointermove', ev => { if (painting) paintAt(ev); });
+window.addEventListener('pointerup', stopPainting);
+window.addEventListener('pointercancel', stopPainting);
+
+/* ================================================================
+   视角开关
+================================================================ */
+let autoRotate = false, spinning = true;
+$('chkAuto').onchange = e => autoRotate = e.target.checked;
+$('chkSpin').onchange = e => spinning = e.target.checked;
+
+/* ================================================================
+   笼内刚体物理（小型自研引擎：盒碰撞体 + 顺序冲量）
+   物品在笼内自由翻滚；点击晃动笼子时，牵连加速度会带动它们
+================================================================ */
+const GRAV = -8.5, FLOOR_Y = 0.1, WALL_R = 0.94, DOME_H = 1.06;
+const REST = 0.32, MU = 0.5;
+const SPAWN = {
+  wrench: { p: new THREE.Vector3(0.02, 0.72, 0.04), e: new THREE.Euler(0.08, 0.55, 2.45) },
+  tile:   { p: new THREE.Vector3(0.05, 0.62, 0.1),  e: new THREE.Euler(-0.1, 0.4, 0) },
+};
+
+const _qi = new THREE.Quaternion(), _dq = new THREE.Quaternion();
+const _r = new THREE.Vector3(), _vr = new THREE.Vector3(), _t1 = new THREE.Vector3(), _t2 = new THREE.Vector3();
+const _f = new THREE.Vector3(), _ax = new THREE.Vector3();
+
+class Body {
+  /* boxes: [{c, h}] 体坐标系下的盒碰撞体（c 中心，h 半尺寸） */
+  constructor(boxes, mass) {
+    this.boxes = boxes;
+    this.m = mass; this.invM = 1 / mass;
+    let ix = 0, iy = 0, iz = 0;          // 平行轴定理近似（忽略惯量积）
+    const mb = mass / boxes.length;
+    for (const b of boxes) {
+      const hx = b.h.x * 2, hy = b.h.y * 2, hz = b.h.z * 2;
+      ix += mb / 12 * (hy * hy + hz * hz) + mb * (b.c.y * b.c.y + b.c.z * b.c.z);
+      iy += mb / 12 * (hx * hx + hz * hz) + mb * (b.c.x * b.c.x + b.c.z * b.c.z);
+      iz += mb / 12 * (hx * hx + hy * hy) + mb * (b.c.x * b.c.x + b.c.y * b.c.y);
+    }
+    this.invI = new THREE.Vector3(1 / ix, 1 / iy, 1 / iz);
+    this.p = new THREE.Vector3();
+    this.v = new THREE.Vector3();
+    this.q = new THREE.Quaternion();
+    this.w = new THREE.Vector3();
+    this.mesh = null; this.active = false;
+  }
+  applyInvI(v, out) {
+    _qi.copy(this.q).invert();
+    out.copy(v).applyQuaternion(_qi);
+    out.set(out.x * this.invI.x, out.y * this.invI.y, out.z * this.invI.z);
+    return out.applyQuaternion(this.q);
+  }
+}
+
+const wrenchBody = new Body([
+  { c: new THREE.Vector3(-0.18, 0, 0),   h: new THREE.Vector3(0.71, 0.10, 0.06) },
+  { c: new THREE.Vector3(0.70, 0.09, 0), h: new THREE.Vector3(0.22, 0.22, 0.06) },
+], 1.2);
+const tileBody = new Body([
+  { c: new THREE.Vector3(0, 0, 0), h: new THREE.Vector3(0.31, 0.46, 0.21) },
+], 0.6);
+wrenchBody.mesh = wrenchGroup; tileBody.mesh = tileGroup;
+
+function resetBody(body, spawn) {
+  body.p.copy(spawn.p);
+  body.q.setFromEuler(spawn.e);
+  body.v.set(0, 0, 0);
+  body.w.set(0, 0, 0);
+}
+resetBody(wrenchBody, SPAWN.wrench);
+resetBody(tileBody, SPAWN.tile);
+wrenchBody.active = true;
+
+/* 笼架牵连加速度（数值差分 + 平滑），点击晃动经由它传给物品 */
+const cageAcc = new THREE.Vector3();
+const _cp = new THREE.Vector3(), _cv = new THREE.Vector3();
+const _cPrev = new THREE.Vector3(), _cPrevV = new THREE.Vector3();
+let _cageN = 0;
+function sampleCageAcc(dt) {
+  cageGroup.getWorldPosition(_cp);
+  if (_cageN < 2) { _cPrev.copy(_cp); _cPrevV.set(0, 0, 0); _cageN++; return; }
+  _cv.subVectors(_cp, _cPrev).divideScalar(dt);
+  _t1.subVectors(_cv, _cPrevV).divideScalar(dt);
+  cageAcc.lerp(_t1, 0.3);
+  if (cageAcc.length() > 30) cageAcc.setLength(30);
+  _cPrev.copy(_cp);
+  _cPrevV.copy(_cv);
+}
+
+/* 碰撞检测：在笼局部空间测试 地面 / 圆柱笼壁 / 穹顶 */
+const _cageInv = new THREE.Matrix4(), _cageQ = new THREE.Quaternion();
+const _pw = new THREE.Vector3(), _pl = new THREE.Vector3(), _nl = new THREE.Vector3();
+const _contacts = [], _pool = [];
+for (let i = 0; i < 32; i++) _pool.push({ p: new THREE.Vector3(), n: new THREE.Vector3(), depth: 0 });
+function collectContacts(body) {
+  _contacts.length = 0;
+  cageGroup.getWorldQuaternion(_cageQ);
+  _cageInv.copy(cageGroup.matrixWorld).invert();
+  let ci = 0;
+  for (const b of body.boxes) {
+    for (let i = 0; i < 8; i++) {
+      _pw.set(
+        b.c.x + (i & 1 ? b.h.x : -b.h.x),
+        b.c.y + (i & 2 ? b.h.y : -b.h.y),
+        b.c.z + (i & 4 ? b.h.z : -b.h.z)
+      ).applyQuaternion(body.q).add(body.p);
+      _pl.copy(_pw).applyMatrix4(_cageInv);
+      let depth = 0;
+      _nl.set(0, 0, 0);
+      if (_pl.y < FLOOR_Y) {
+        _nl.set(0, 1, 0); depth = FLOOR_Y - _pl.y;
+      } else {
+        const d = Math.hypot(_pl.x, _pl.z);
+        const allow = _pl.y < 2 ? WALL_R
+          : WALL_R * Math.sqrt(Math.max(0, 1 - ((_pl.y - 2) / DOME_H) ** 2));
+        if (d > allow && d > 1e-6) { _nl.set(-_pl.x / d, 0, -_pl.z / d); depth = d - allow; }
+      }
+      if (depth > 0 && ci < _pool.length) {
+        const c = _pool[ci++];
+        c.p.copy(_pw);
+        c.n.copy(_nl).applyQuaternion(_cageQ).normalize();
+        c.depth = depth;
+        _contacts.push(c);
+      }
+    }
+  }
+  return _contacts;
+}
+
+/* 顺序冲量求解（库仑摩擦 + 位置修正） */
+function solveContact(body, c) {
+  _r.copy(c.p).sub(body.p);
+  _vr.copy(body.w).cross(_r).add(body.v);
+  const vn = _vr.dot(c.n);
+  if (c.depth > 0.004) body.p.addScaledVector(c.n, Math.min(c.depth, 0.06) * 0.4);
+  if (vn >= 0) return;
+  _t1.copy(_r).cross(c.n);
+  body.applyInvI(_t1, _t2);
+  _t2.cross(_r);
+  const kn = body.invM + _t2.dot(c.n);
+  const j = -(1 + REST) * vn / Math.max(kn, 1e-9);
+  body.v.addScaledVector(c.n, j * body.invM);
+  _t1.copy(_r).cross(_t2.copy(c.n).multiplyScalar(j));
+  body.applyInvI(_t1, _t2);
+  body.w.add(_t2);
+  _vr.copy(body.w).cross(_r).add(body.v);
+  _t1.copy(_vr).addScaledVector(c.n, -_vr.dot(c.n));
+  const tl = _t1.length();
+  if (tl > 1e-4) {
+    _t1.divideScalar(tl);
+    _t2.copy(_r).cross(_t1);
+    body.applyInvI(_t2, _t2);
+    _t2.cross(_r);
+    const kt = body.invM + _t2.dot(_t1);
+    let jt = -tl / Math.max(kt, 1e-9);
+    const maxF = MU * j;
+    jt = Math.max(-maxF, Math.min(maxF, jt));
+    body.v.addScaledVector(_t1, jt * body.invM);
+    _t1.multiplyScalar(jt);
+    _t2.copy(_r).cross(_t1);
+    body.applyInvI(_t2, _t2);
+    body.w.add(_t2);
+  }
+}
+
+function stepBody(body, dt) {
+  if (!body.active) return;
+  _f.set(0, GRAV * body.m, 0);
+  _f.addScaledVector(cageAcc, -body.m * 0.9);
+  if (spinning) {                    // 自转的离心效应
+    const a = 0.35 * 0.35;
+    _f.x += body.m * a * body.p.x;
+    _f.z += body.m * a * body.p.z;
+  }
+  body.v.addScaledVector(_f, dt / body.m);
+  body.v.multiplyScalar(1 - 0.02);
+  body.w.multiplyScalar(1 - 0.04);
+  body.p.addScaledVector(body.v, dt);
+  const wl = body.w.length();
+  if (wl > 1e-6) {
+    _ax.copy(body.w).divideScalar(wl);
+    _dq.setFromAxisAngle(_ax, wl * dt);
+    body.q.premultiply(_dq).normalize();
+  }
+  const contacts = collectContacts(body);
+  for (let it = 0; it < 2; it++)
+    for (let k = 0; k < contacts.length; k++) solveContact(body, contacts[k]);
+  if (body.v.lengthSq() < 4e-4 && body.w.lengthSq() < 25e-4) {
+    body.v.multiplyScalar(0.82);     // 静息衰减，防止触点抖动
+    body.w.multiplyScalar(0.75);
+  }
+  body.mesh.position.copy(body.p);
+  body.mesh.quaternion.copy(body.q);
+}
+
+/* 弹簧摆：替代正弦摆，可接受点击冲量后自然衰减 */
+let swZ = 0, swZV = 0.05, swX = 0, swXV = -0.03;
+function stepSway(dt, t) {
+  swZV += (-9 * swZ - 0.55 * swZV + Math.sin(t * 0.5) * 0.02) * dt;
+  swZ += swZV * dt;
+  swXV += (-9 * swX - 0.55 * swXV + Math.cos(t * 0.37) * 0.015) * dt;
+  swX += swXV * dt;
+  swayGroup.rotation.z = swZ;
+  swayGroup.rotation.x = swX;
+}
+
+/* 点击笼子 → 晃动 + 笼内物品被抛起 */
+const cageMeshes = [];
+swayGroup.traverse(o => { if (o.isMesh) cageMeshes.push(o); });
+cageMeshes.push(loop);
+function shakeCage() {
+  swZV += (Math.random() < 0.5 ? -1 : 1) * rand(0.5, 0.85);
+  swXV += rand(-0.35, 0.35);
+  const b = current === 'wrench' ? wrenchBody : tileBody;
+  b.v.x += rand(-1.5, 1.5);
+  b.v.z += rand(-1.5, 1.5);
+  b.v.y += rand(1.4, 2.6);
+  b.w.set(rand(-5, 5), rand(-5, 5), rand(-5, 5));
+}
+
+/* ================================================================
+   主循环
+================================================================ */
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 1 / 30);
+  const t = clock.getElapsedTime();
+
+  /* 笼子：弹簧摆 + 自转（涂色时暂停自转，避免"追着画"） */
+  stepSway(dt, t);
+  if (spinning && !painting) cageGroup.rotation.y = t * 0.35;
+  sampleCageAcc(dt);
+
+  /* 笼内物品刚体物理（两个子步提高稳定性） */
+  const body = current === 'wrench' ? wrenchBody : tileBody;
+  const h = dt / 2;
+  stepBody(body, h);
+  stepBody(body, h);
+
+  /* 弹入动画 */
+  if (popStart >= 0) {
+    const k = (performance.now() - popStart) / 400;
+    const item = current === 'wrench' ? wrenchGroup : tileGroup;
+    if (k >= 1) { item.scale.setScalar(current === 'wrench' ? 0.16 : 1); popStart = -1; }
+    else item.scale.setScalar(Math.max(0.001, easeOutBack(k)) * (current === 'wrench' ? 0.16 : 1));
+  }
+
+  controls.autoRotate = autoRotate && !painting;
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* 完成：撤掉加载遮罩 */
+$('overlay').classList.add('done');
+</script>
+</body>
+</html>
