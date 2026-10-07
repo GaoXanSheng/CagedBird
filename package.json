@@ -1,0 +1,11 @@
+{
+  "name": "caged-bird",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node physics.test.mjs"
+  },
+  "dependencies": {
+    "cannon-es": "^0.20.0"
+  }
+}
