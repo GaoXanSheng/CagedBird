@@ -3,10 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node physics.test.mjs"
+    "test": "node physics.test.mjs",
+    "build": "node build.mjs"
   },
   "dependencies": {
     "cannon-es": "^0.20.0",
     "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }
