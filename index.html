@@ -22,7 +22,13 @@
     box-shadow: 0 3px 14px rgba(0, 0, 0, 0.25);
     font-size: 12px;
   }
-  #ui header { display: flex; align-items: baseline; gap: 8px; }
+  #ui header {
+    display: flex; align-items: baseline; gap: 8px; cursor: pointer;
+    padding: 2px 0; user-select: none;
+  }
+  #ui header .tw { margin-left: auto; font-size: 10px; color: #78838b; transition: transform .18s; }
+  #ui.collapsed .sec, #ui.collapsed .checks, #ui.collapsed .tip { display: none; }
+  #ui.collapsed header .tw { transform: rotate(-90deg); }
   #ui h1 { font-size: 14px; font-weight: 650; letter-spacing: 0.5px; }
   #ui header span { font-size: 10px; color: #78838b; }
   :focus-visible { outline: 1px solid #d9a441; outline-offset: 2px; }
@@ -103,7 +109,7 @@
 <div id="app"></div>
 
 <div id="ui">
-  <header><h1>笼中物</h1><span>铁笼 · 扳手 · 幺鸡</span></header>
+  <header id="uiHeader" title="折叠 / 展开"><h1>笼中物</h1><span>铁笼 · 扳手 · 幺鸡</span><span class="tw">▼</span></header>
 
   <div class="sec">
     <div class="cap">笼中之物</div>
@@ -680,6 +686,7 @@ function addDebugBody(body, color) {
 const debugCage = addDebugBody(cageBody, 0x00e5ff);
 const debugWrench = addDebugBody(wrenchBody, 0xff9500);
 const debugTile = addDebugBody(tileBody, 0xff40ff);
+debugTile.visible = false;                    // 初始只显示扳手
 
 function syncVisuals() {
   cageGroup.position.set(
@@ -708,13 +715,71 @@ syncVisuals();
 /* ================================================================
    音效：WebAudio 合成金属撞击（非谐分音 + 带通噪声瞬态）
 ================================================================ */
-let soundOn = true, audioCtx = null, _lastClink = 0;
+let soundOn = true, audioCtx = null, masterGain = null, ambienceOn = false, _lastClink = 0;
 function ensureAudio() {
   if (!audioCtx) {
     const AC = window.AudioContext || window.webkitAudioContext;
-    if (AC) audioCtx = new AC();
+    if (AC) {
+      audioCtx = new AC();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = soundOn ? 1 : 0;
+      masterGain.connect(audioCtx.destination);
+    }
   }
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  startAmbience();
+}
+
+/* 环境：风声（布朗噪声低通 + 慢 LFO 起伏）+ 随机鸟鸣短语 */
+function startAmbience() {
+  if (ambienceOn || !audioCtx || audioCtx.state !== 'running') return;
+  ambienceOn = true;
+  const len = audioCtx.sampleRate * 2;
+  const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < len; i++) {
+    last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+    d[i] = last * 3.5;
+  }
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf; src.loop = true;
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 420; lp.Q.value = 0.6;
+  const wind = audioCtx.createGain(); wind.gain.value = 0.05;
+  const lfo = audioCtx.createOscillator(); lfo.frequency.value = 0.07;
+  const lfoG = audioCtx.createGain(); lfoG.gain.value = 180;
+  lfo.connect(lfoG).connect(lp.frequency);
+  src.connect(lp).connect(wind).connect(masterGain);
+  src.start(); lfo.start();
+  scheduleChirp();
+}
+function scheduleChirp() {
+  if (!audioCtx) return;
+  setTimeout(() => { chirpPhrase(); scheduleChirp(); }, 2200 + Math.random() * 4500);
+}
+function chirpPhrase() {                     // 一串 2~4 声的鸟鸣（扫频正弦+颤音）
+  if (!soundOn || !audioCtx || audioCtx.state !== 'running') return;
+  const n = 2 + (Math.random() * 3 | 0);
+  const base = 2500 + Math.random() * 1500;
+  for (let i = 0; i < n; i++) {
+    const t0 = audioCtx.currentTime + i * (0.13 + Math.random() * 0.09);
+    const o = audioCtx.createOscillator();
+    o.type = 'sine';
+    const f0 = base * (0.9 + Math.random() * 0.2);
+    o.frequency.setValueAtTime(f0, t0);
+    o.frequency.exponentialRampToValueAtTime(f0 * (Math.random() < 0.5 ? 0.62 : 1.45), t0 + 0.09);
+    const v = audioCtx.createOscillator(); v.frequency.value = 28 + Math.random() * 22;
+    const vg = audioCtx.createGain(); vg.gain.value = f0 * 0.04;
+    v.connect(vg).connect(o.frequency);
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.07, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
+    o.connect(g).connect(masterGain);
+    o.start(t0); o.stop(t0 + 0.14);
+    v.start(t0); v.stop(t0 + 0.14);
+  }
 }
 function clank(strength) {
   if (!soundOn || !audioCtx || audioCtx.state !== 'running') return;
@@ -722,7 +787,7 @@ function clank(strength) {
   const out = audioCtx.createGain();
   out.gain.setValueAtTime(Math.min(0.4, 0.05 + strength * 0.09), t0);
   out.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22 + strength * 0.12);
-  out.connect(audioCtx.destination);
+  out.connect(masterGain);
   const base = 460 + Math.random() * 180;
   for (const [ratio, amp, dec] of [[1, 1, 0.28], [2.32, 0.55, 0.2], [3.98, 0.35, 0.14], [6.21, 0.22, 0.1]]) {
     const o = audioCtx.createOscillator();
@@ -767,14 +832,19 @@ const easeOutBack = t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math
 function setItem(name) {
   if (name === current) return;
   current = name;
+  ensureAudio();
   wrenchGroup.visible = name === 'wrench';
   tileGroup.visible = name === 'tile';
   (name === 'wrench' ? wrenchGroup : tileGroup).scale.setScalar(0.001);
   popStart = performance.now();
+  phys.setActiveItem(name);
   resetBody(name === 'wrench' ? wrenchBody : tileBody, SPAWN[name]);
+  debugWrench.visible = name === 'wrench';
+  debugTile.visible = name === 'tile';
   $('btnWrench').classList.toggle('active', name === 'wrench');
   $('btnTile').classList.toggle('active', name === 'tile');
   $('paintBox').classList.toggle('disabled', name !== 'wrench');
+  if (name === 'tile') chirpPhrase();          // 幺鸡登场：来一声鸟叫
   if (name !== 'wrench') stopPainting();
 }
 $('btnWrench').onclick = () => setItem('wrench');
@@ -894,8 +964,12 @@ function shakeCage() {
 let autoRotate = false, spinning = true;
 $('chkAuto').onchange = e => autoRotate = e.target.checked;
 $('chkSpin').onchange = e => spinning = e.target.checked;
-$('chkSound').onchange = e => soundOn = e.target.checked;
+$('chkSound').onchange = e => {
+  soundOn = e.target.checked;
+  if (masterGain) masterGain.gain.value = soundOn ? 1 : 0;
+};
 $('chkDebug').onchange = e => debugGroup.visible = e.target.checked;
+$('uiHeader').onclick = () => $('ui').classList.toggle('collapsed');
 
 /* ================================================================
    主循环

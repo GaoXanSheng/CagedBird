@@ -11,12 +11,12 @@ export const CAGE = {
   barR: 1,
   barH: 2,
   baseY: 0.1,             // 笼底板顶面
-  wallR: 1.1,            // 不可见连续内壁半径（栏杆外侧一点，堵住间隙）
+  wallR: 1.17,            // 不可见连续内壁半径（栏杆外侧一点，堵住间隙）
 };
 
 export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } = {}) {
   const world = new CANNON.World({ gravity: new CANNON.Vec3(0, gravity, 0) });
-  world.broadphase = new CANNON.SAPBroadphase(world);
+  world.broadphase = new CANNON.NaiveBroadphase(world);   // 4 体场景：朴素配对零漏检，且不受反复挂载/摘除影响
   world.solver.iterations = 12;
   world.defaultContactMaterial.friction = 0.4;
   world.defaultContactMaterial.restitution = 0.3;
@@ -47,20 +47,21 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
       const a = (i / 24) * Math.PI * 2;
       const q = new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -Math.PI / 2 - a);
       cageBody.addShape(
-        new CANNON.Box(new CANNON.Vec3(0.35, 0.45, 0.03)),
+        new CANNON.Box(new CANNON.Vec3(0.35, 0.45, 0.15)),
         new CANNON.Vec3(Math.cos(a) * CAGE.wallR, wy, Math.sin(a) * CAGE.wallR),
         q
       );
     }
   }
   const slope = Math.atan2(0.82, 1.0);
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2;
-    const q = new CANNON.Quaternion();
-    q.setFromAxisAngle(new CANNON.Vec3(-Math.sin(a), 0, Math.cos(a)), slope);
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    /* 偏航对准方位 + 绕切向轴倾斜：16 段均分，宽轴保持水平切向 */
+    const q = new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -a)
+      .mult(new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(0, 0, 1), slope));
     cageBody.addShape(
-      new CANNON.Box(new CANNON.Vec3(0.03, 0.645, 0.55)),
-      new CANNON.Vec3(Math.cos(a) * 0.53, 2.5, Math.sin(a) * 0.53),
+      new CANNON.Box(new CANNON.Vec3(0.12, 0.645, 0.28)),
+      new CANNON.Vec3(Math.cos(a) * 0.62, 2.5, Math.sin(a) * 0.62),
       q
     );
   }
@@ -92,17 +93,20 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
   tileBody.addShape(new CANNON.Box(new CANNON.Vec3(0.31, 0.46, 0.21)));
   world.addBody(tileBody);
 
-  /* 初始位姿（笼局部）：扳手平放在笼底上（参考图 1 姿态），头部朝向默认相机；
-     幺鸡同样落底。物品都贴着笼底，不悬空 */
-  function floorSpawn() {
-    const yaw = -56.25 * Math.PI / 180;                 // 头部朝向默认相机一侧
-    const q = new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(0, 1, 0), yaw)
-      .mult(new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2));
-    const p = new CANNON.Vec3(Math.cos(-yaw) * 0.15, 0.17, Math.sin(-yaw) * 0.15);
-    return { p, q };
+  /* 初始位姿（笼局部）：扳手斜卡在笼子中间——头部抵住栏杆/内壁（y≈1.3），
+     尾部搭在笼底（参考图 2 姿态）；幺鸡平贴笼底（参考图 1） */
+  function wrenchSpawn() {
+    const phi = 56.25 * Math.PI / 180;
+    const dir = new CANNON.Vec3(Math.cos(phi) * 0.55, 0.83, Math.sin(phi) * 0.55);
+    dir.normalize();
+    const q = new CANNON.Quaternion().setFromVectors(new CANNON.Vec3(1, 0, 0), dir);
+    q.mult(new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(1, 0, 0), 50 * Math.PI / 180), q);
+    const off = q.vmult(new CANNON.Vec3(0.696, 0.088, 0));
+    const headC = new CANNON.Vec3(Math.cos(phi) * 0.76, 1.30, Math.sin(phi) * 0.76);
+    return { p: headC.vsub(off), q };
   }
   const SPAWN = {
-    wrench: floorSpawn(),
+    wrench: wrenchSpawn(),
     tile: { p: new CANNON.Vec3(0.15, 0.62, 0.05), q: new CANNON.Quaternion().setFromEuler(-0.08, 0.5, 0) },
   };
 
@@ -117,6 +121,40 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
   }
   resetBody(wrenchBody, SPAWN.wrench);
   resetBody(tileBody, SPAWN.tile);
+
+  /* 物品挂载管理：未选中的物品碰撞体不在物理世界里（切换 = 换碰撞箱）。
+     摘除时把位姿记到笼局部系，重挂时按记忆原地放回——笼子怎么摆，
+     物品都待在笼里原来的位置，绝不会在笼外凭空出现 */
+  const _parked = new Map();
+  function mountBody(body, on) {
+    if (!on) {
+      cageBody.pointToLocalFrame(body.position, _tmpV);
+      _parked.set(body.id, {
+        p: _tmpV.clone(),
+        q: cageBody.quaternion.inverse().mult(body.quaternion),
+      });
+    }
+    const i = world.bodies.indexOf(body);
+    if (on) {
+      const park = _parked.get(body.id);
+      if (park) {
+        cageBody.pointToWorldFrame(park.p, body.position);
+        cageBody.quaternion.mult(park.q, body.quaternion);
+        cageBody.getVelocityAtWorldPoint(body.position, body.velocity);
+        body.angularVelocity.copy(cageBody.angularVelocity);
+        body.wakeUp();
+        _parked.delete(body.id);
+      }
+      if (world.bodies.indexOf(body) < 0) world.addBody(body);
+    } else if (i >= 0) {
+      world.removeBody(body);
+    }
+  }
+  function setActiveItem(name) {
+    mountBody(wrenchBody, name !== 'tile');
+    mountBody(tileBody, name === 'tile');
+  }
+  setActiveItem('wrench');
 
   let spinTarget = 0;
   const VMAX = 25, WMAX = 30;                // 限速保险：拦下任何异常能量尖峰
@@ -146,7 +184,7 @@ export function createPhysics({ origin = { x: 0, y: 0, z: 0 }, gravity = -9.0 } 
   }
 
   return {
-    world, cageBody, wrenchBody, tileBody, SPAWN, resetBody, shake, step,
+    world, cageBody, wrenchBody, tileBody, SPAWN, resetBody, shake, step, setActiveItem,
     setSpin: on => { spinTarget = on ? 0.35 : 0; },
   };
 }

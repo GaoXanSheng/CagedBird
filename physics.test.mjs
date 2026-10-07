@@ -9,7 +9,7 @@ import { createPhysics, CAGE } from './physics.js';
 
 const DT = 1 / 60;
 const phys = createPhysics({ origin: { x: 0, y: 0, z: 0 } });
-const { cageBody, wrenchBody, tileBody, SPAWN, resetBody } = phys;
+const { world, cageBody, wrenchBody, tileBody, SPAWN, resetBody } = phys;
 
 const finite = b => [b.position, b.velocity, b.angularVelocity]
   .every(v => [v.x, v.y, v.z].every(Number.isFinite));
@@ -65,12 +65,17 @@ console.log('阶段1 通过：静置自转 8s，扳手平贴笼底，笼子悬�
 /* 阶段 2：点击风暴 12s（每秒一次，交替物品）—— 笼子真实摆动且物品不逃逸 */
 let maxTilt = 0;
 for (let i = 0; i < 720; i++) {
-  if (i % 60 === 0) phys.shake(i % 120 === 0 ? 'wrench' : 'tile');
+  if (i % 60 === 0) {
+    const t = i % 120 === 0 ? 'wrench' : 'tile';
+    phys.setActiveItem(t);                  // 切换即换碰撞箱
+    phys.shake(t);
+  }
   phys.step(DT);
   assert.ok(finite(wrenchBody) && finite(tileBody) && finite(cageBody), `点击风暴 NaN @ ${i}`);
   maxTilt = Math.max(maxTilt, cageTilt());
   if (i % 60 === 59) {
     for (const [name, b] of [['扳手', wrenchBody], ['幺鸡', tileBody]]) {
+      if (!world.bodies.includes(b)) continue;   // 未挂载的已存档冻结
       const l = localOfBody(b);
       assert.ok(radial(l) < 1.25 && l.y > -0.3 && l.y < 2.8, `${name} 越过栏杆平面 @${i} r=${radial(l).toFixed(2)}`);
     }
@@ -81,12 +86,14 @@ assert.ok(Math.abs(hangGap() - CAGE.pivotLocalY) < 0.03, `风暴后约束失效�
 console.log(`阶段2 通过：点击风暴 12s，笼子最大摆角 ${(maxTilt * 180 / Math.PI).toFixed(1)}°，悬挂正常，物品均在笼内`);
 
 /* 阶段 3：物品切换重置 —— 扳手回到卡位，幺鸡落到笼底 */
+phys.setActiveItem('wrench');
 resetBody(wrenchBody, SPAWN.wrench);
 for (let i = 0; i < 120; i++) phys.step(DT);
 const wl = localOfBody(wrenchBody);
 const hl = localOfPoint(wrenchBody.pointToWorldFrame(new CANNON.Vec3(0.696, 0.088, 0)));
 assert.ok(radial(wl) < 1.5 && radial(wl) < 1.5, `扳手重置后位置异常 r=${radial(wl).toFixed(2)}`);
 assert.ok(radial(hl) < 1.05, `重置后头部未卡进栏杆 r=${radial(hl).toFixed(2)}`);
+phys.setActiveItem('tile');
 resetBody(tileBody, SPAWN.tile);
 for (let i = 0; i < 120; i++) phys.step(DT);
 const tl = localOfBody(tileBody);
@@ -96,10 +103,15 @@ console.log('阶段3 通过：切换物品后扳手与幺鸡都落回笼底');
 /* 阶段 4：30s 高强度折腾（每 0.5s 点击 + 全程自转）——封闭壳不许有任何泄漏 */
 phys.setSpin(true);
 for (let i = 0; i < 1800; i++) {
-  if (i % 30 === 0) phys.shake(i % 60 === 0 ? 'wrench' : 'tile');
+  if (i % 30 === 0) {
+    const t = i % 60 === 0 ? 'wrench' : 'tile';
+    phys.setActiveItem(t);                     // 风暴中反复挂载/摘除，验证切换稳定性
+    phys.shake(t);
+  }
   phys.step(DT);
   assert.ok(finite(wrenchBody) && finite(tileBody) && finite(cageBody), `NaN/Inf @ soak ${i}`);
   for (const [name, b] of [['扳手', wrenchBody], ['幺鸡', tileBody]]) {
+      if (!world.bodies.includes(b)) continue;   // 未挂载的已存档冻结
     const l = localOfBody(b);
     assert.ok(radial(l) < 1.15 && l.y > -0.3 && l.y < 2.8, `${name} 越狱 @${i} r=${radial(l).toFixed(2)} y=${l.y.toFixed(2)}`);
   }
